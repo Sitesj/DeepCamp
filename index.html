@@ -1,0 +1,2505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deer Camp</title>
+<meta name="description" content="Deer Camp — record deer sightings and gunshots from your stand, even without cell service.">
+<meta name="theme-color" content="#26292b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Deer Camp">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+:root {
+  --green: #2f5d34; --green-d: #1d3f22; --green-l: #e3eee0;
+  --char: #26292b; --char-2: #3a3f42;
+  --bg: #f3f1ea; --card: #ffffff; --line: #cfcabb;
+  --orange: #e07b12; --orange-l: #fdebd3;
+  --red: #b8231b; --red-l: #fbe0de;
+  --muted: #555b60; --ok: #256b2a; --warn: #8a5200;
+  --buck: #8a4b14; --doe: #d9a15b; --unk: #6c7378;
+  --hdr: 56px;
+}
+* { box-sizing: border-box; }
+html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+html.text-xl { font-size: 21px; }
+body {
+  margin: 0; background: var(--bg); color: var(--char);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1rem; line-height: 1.35;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+h1, h2, h3 { margin: 0 0 .5rem; line-height: 1.2; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.15rem; }
+p { margin: .4rem 0; }
+.muted { color: var(--muted); }
+.small { font-size: .9rem; }
+.center { text-align: center; }
+.hidden { display: none !important; }
+a { color: var(--green-d); }
+
+/* Header */
+header.app {
+  position: sticky; top: 0; z-index: 1500; height: calc(var(--hdr) + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  background: var(--char); color: #fff; display: flex; align-items: center; justify-content: space-between;
+  padding-left: 14px; padding-right: 4px;
+}
+header.app .brand { font-weight: 900; letter-spacing: .08em; font-size: 1.25rem; }
+header.app .brand span { color: var(--orange); }
+.menu-btn {
+  width: 52px; height: 52px; border: 0; border-radius: 10px; background: transparent; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.menu-btn:focus-visible { outline: 3px solid var(--orange); }
+.statusbar {
+  display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  background: #fff; border-bottom: 1px solid var(--line); padding: 6px 12px; font-size: .9rem; font-weight: 600;
+}
+.statusbar button { border: 0; background: none; padding: 6px 4px; font-weight: 700; min-height: 36px; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.dot.on { background: #2e9d36; } .dot.off { background: #9aa0a4; }
+.sync-ok { color: var(--ok); } .sync-wait { color: var(--warn); } .sync-bad { color: var(--red); }
+.banner { padding: 10px 14px; font-weight: 600; font-size: .95rem; }
+.banner.info { background: var(--orange-l); }
+.banner.update { background: var(--green); color: #fff; }
+.banner button { margin-left: 8px; }
+
+/* Screens */
+main { max-width: 640px; margin: 0 auto; }
+.screen { display: none; padding: 14px 14px 32px; }
+.screen.active { display: block; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 0 0 12px; }
+
+/* Buttons */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center;
+  width: 100%; min-height: 56px; padding: 12px 16px; margin: 0 0 10px;
+  border-radius: 12px; border: 2px solid var(--char); background: #fff; color: var(--char);
+  font-size: 1.1rem; font-weight: 800; letter-spacing: .02em;
+}
+.btn:active { transform: translateY(1px); filter: brightness(.95); }
+.btn:disabled { opacity: .55; }
+.btn:focus-visible { outline: 4px solid var(--orange); outline-offset: 2px; }
+.btn-primary { background: var(--green); border-color: var(--green-d); color: #fff; }
+.btn-danger { background: var(--red); border-color: #7d1610; color: #fff; }
+.btn-orange { background: var(--orange); border-color: #9a5208; color: #111; }
+.btn-dark { background: var(--char); color: #fff; }
+.btn-big { min-height: 104px; font-size: 1.55rem; border-radius: 16px; border-width: 3px; }
+.btn-row { display: flex; gap: 10px; } .btn-row .btn { flex: 1; }
+.btn-inline { display: inline-flex; width: auto; min-height: 48px; margin: 0; padding: 8px 14px; font-size: 1rem; }
+.btn-link { border: 0; background: none; text-decoration: underline; font-weight: 700; padding: 8px 4px; min-height: 44px; color: var(--green-d); }
+
+/* Forms */
+label.field { display: block; margin: 0 0 12px; font-weight: 700; }
+label.field input, label.field select, label.field textarea, select.big, input.big {
+  display: block; width: 100%; margin-top: 4px; min-height: 52px; padding: 10px 12px;
+  border: 2px solid var(--char-2); border-radius: 10px; background: #fff; font-size: 1.05rem; font-weight: 500;
+}
+.check { display: flex; align-items: center; gap: 10px; min-height: 48px; font-weight: 700; }
+.check input { width: 28px; height: 28px; accent-color: var(--green); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.chip {
+  min-height: 48px; padding: 8px 14px; border-radius: 24px; border: 2px solid var(--char-2); background: #fff;
+  font-weight: 700; font-size: 1rem;
+}
+.chip[aria-pressed="true"] { background: var(--char); color: #fff; }
+.err { color: var(--red); font-weight: 700; }
+
+/* Home */
+.home-id { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; font-size: 1.1rem; }
+.home-id .k { color: var(--muted); font-weight: 600; }
+.home-id .v { font-weight: 800; }
+.hunt-state { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.counts { display: flex; gap: 10px; }
+.count { flex: 1; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 6px; }
+.count b { display: block; font-size: 2rem; line-height: 1.1; }
+.count.gun b { color: var(--red); }
+.last-rec { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.weather-line { font-size: .95rem; color: var(--muted); }
+
+/* Lists */
+.list-btn { display: flex; justify-content: space-between; align-items: center; text-align: left; }
+.list-btn small { font-weight: 500; color: var(--muted); }
+.feed-day { margin: 14px 0 6px; font-weight: 800; font-size: 1.1rem; }
+.feed-item { background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--green); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.feed-item.gun { border-left-color: var(--red); }
+.feed-item.voided { opacity: .6; }
+.feed-item.voided .what { text-decoration: line-through; }
+.feed-item .when { font-weight: 800; }
+.feed-item .what { font-size: 1.05rem; margin-top: 2px; }
+.feed-item .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+.tag { display: inline-block; font-size: .8rem; font-weight: 800; border-radius: 6px; padding: 2px 6px; background: #eee; }
+.tag.pending { background: var(--orange-l); color: var(--warn); }
+.tag.failed { background: var(--red-l); color: var(--red); }
+.tag.synced { background: var(--green-l); color: var(--ok); }
+.tag.voided { background: #ddd; color: #333; }
+
+/* Overlays */
+.overlay {
+  position: fixed; inset: 0; z-index: 3000; background: var(--bg); display: none; flex-direction: column;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+}
+.overlay.open { display: flex; }
+.ov-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--char); color: #fff; padding: 4px 6px; min-height: var(--hdr);
+}
+.ov-head .title { font-weight: 800; font-size: 1.05rem; text-align: center; flex: 1; }
+.ov-head button { min-height: 48px; min-width: 88px; border: 2px solid #fff; border-radius: 10px; background: transparent; color: #fff; font-weight: 800; }
+.ov-body { padding: 10px 14px 20px; max-width: 640px; width: 100%; margin: 0 auto; flex: 1; }
+.question { font-size: 1.45rem; font-weight: 900; text-align: center; margin: 6px 0 8px; text-transform: uppercase; }
+.stepnum { text-align: center; color: var(--muted); font-weight: 700; font-size: .95rem; }
+
+/* Compass: the 16 circular markers ARE the buttons */
+.compass {
+  --d: min(94vw, 62vh, 440px);
+  width: var(--d); height: var(--d); position: relative; margin: 6px auto 10px; user-select: none; -webkit-user-select: none;
+}
+.compass .ring {
+  position: absolute; inset: 7.6%; border-radius: 50%;
+  border: 3px dashed #9c9686; background: radial-gradient(circle, #fff 0 38%, #ece8dc 39% 100%);
+}
+.compass .center {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 44%;
+  text-align: center; pointer-events: none;
+}
+.compass .center .you { font-size: calc(var(--d) * .05); font-weight: 800; color: var(--muted); }
+.compass .center .pick { font-size: calc(var(--d) * .1); font-weight: 900; color: var(--green-d); min-height: 1.1em; line-height: 1.1; }
+.cpt {
+  position: absolute; width: 15.2%; height: 15.2%; border-radius: 50%; padding: 0;
+  border: 3px solid var(--char); background: #fff; color: var(--char);
+  font-weight: 900; font-size: calc(var(--d) * .046); letter-spacing: -.02em;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 3px rgba(0,0,0,.25);
+}
+.cpt.cardinal { background: var(--char); color: #fff; font-size: calc(var(--d) * .062); }
+.cpt.north { background: var(--orange); border-color: #7a4006; color: #111; }
+.cpt.sel { background: var(--green) !important; color: #fff !important; border-color: #0b2a0f !important; transform: scale(1.14); box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--green); z-index: 2; }
+.cpt:focus-visible { outline: 4px solid var(--orange); outline-offset: 2px; }
+
+.qty { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 20px 0; }
+.qty button { width: 96px; height: 96px; border-radius: 50%; font-size: 3rem; font-weight: 900; border: 3px solid var(--char); background: #fff; }
+.qty .n { font-size: 4.2rem; font-weight: 900; min-width: 2ch; text-align: center; }
+.summary { font-size: 1.15rem; }
+.summary div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 8px 0; gap: 10px; }
+.summary div b { text-align: right; }
+
+.confirm-box { text-align: center; padding: 26px 10px 10px; }
+.confirm-box .big-icon { font-size: 5rem; line-height: 1; }
+.confirm-box .msg { font-size: 1.7rem; font-weight: 900; margin: 10px 0; }
+.confirm-box.offline .msg { color: var(--warn); }
+.confirm-box.fail .msg { color: var(--red); }
+
+/* Menu */
+.menu-panel { position: fixed; inset: 0; z-index: 3500; display: none; background: rgba(0,0,0,.45); }
+.menu-panel.open { display: block; }
+.menu-panel nav {
+  position: absolute; right: 0; top: 0; bottom: 0; width: min(86vw, 360px); background: var(--bg);
+  padding: calc(10px + env(safe-area-inset-top)) 12px 12px; overflow-y: auto; box-shadow: -4px 0 14px rgba(0,0,0,.3);
+}
+.menu-panel nav .btn { justify-content: flex-start; font-size: 1.2rem; min-height: 60px; }
+.menu-panel nav .btn .ic { width: 1.6em; text-align: center; }
+
+/* Dialog */
+.dialog-wrap { position: fixed; inset: 0; z-index: 4000; display: none; background: rgba(0,0,0,.5); align-items: center; justify-content: center; padding: 16px; }
+.dialog-wrap.open { display: flex; }
+.dialog { background: #fff; border-radius: 16px; padding: 18px; width: min(100%, 460px); max-height: 90vh; overflow-y: auto; }
+.dialog h3 { font-size: 1.3rem; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 5000;
+  background: var(--char); color: #fff; padding: 12px 18px; border-radius: 12px; font-weight: 700; max-width: 92vw; display: none;
+}
+.toast.show { display: block; }
+
+/* Maps */
+.screen.map-screen { padding: 0; }
+.map-wrap { position: relative; }
+.map { width: 100%; height: 58vh; height: 58dvh; background: #3a3f36; }
+.map { scroll-margin-top: calc(var(--hdr) + env(safe-area-inset-top)); }
+.map-note {
+  position: absolute; left: 8px; right: 8px; bottom: 30px; z-index: 900; background: rgba(255,255,255,.94);
+  border-radius: 10px; padding: 6px 8px; font-size: 13px; font-weight: 600; line-height: 1.3; pointer-events: none;
+}
+.leaflet-control-attribution { font-size: 10px !important; line-height: 1.3 !important; max-width: 70vw; }
+.leaflet-control-scale-line { font-size: 11px; }
+.filters { padding: 10px 12px 4px; }
+.filters .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.filters select { min-height: 48px; border: 2px solid var(--char-2); border-radius: 10px; padding: 6px 10px; background: #fff; font-size: 1rem; flex: 1 1 140px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .9rem; padding: 4px 12px 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px #333; }
+
+.stand-pin { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.stand-pin .tri { width: 22px; height: 22px; background: var(--orange); border: 3px solid #fff; border-radius: 4px; transform: rotate(45deg); box-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.stand-pin .nm { margin-top: 4px; background: rgba(0,0,0,.78); color: #fff; font-weight: 800; font-size: 13px; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.stand-pin.dim { opacity: .55; }
+.deer-pin {
+  width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; color: #fff; font-weight: 900; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,.7);
+}
+.deer-pin.buck { background: var(--buck); } .deer-pin.doe { background: var(--doe); color: #111; } .deer-pin.unknown { background: var(--unk); }
+.deer-pin.latest { box-shadow: 0 0 0 4px var(--orange), 0 1px 4px rgba(0,0,0,.7); }
+.gun-alert {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--red); color: #fff; border: 3px solid #fff;
+  font-size: 28px; font-weight: 900; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.7);
+}
+.gun-alert.small { width: 26px; height: 26px; font-size: 18px; }
+.gun-alert.old { opacity: .55; }
+.gun-alert.pulse { animation: pulse 1s ease-in-out 3; }
+@keyframes pulse { 50% { transform: scale(1.3); } }
+.bang {
+  font-family: "Impact", "Arial Black", system-ui, sans-serif; font-weight: 900; font-size: 30px; color: #ffe600;
+  -webkit-text-stroke: 2px #b8231b; text-shadow: 3px 3px 0 #000; white-space: nowrap;
+  animation: bang 2.6s ease-out forwards; transform-origin: center;
+}
+.bang::before {
+  content: ""; position: absolute; inset: -14px -18px; z-index: -1; background: #e02d1b;
+  clip-path: polygon(50% 0, 61% 30%, 95% 12%, 75% 42%, 100% 58%, 70% 64%, 82% 98%, 52% 74%, 22% 100%, 30% 68%, 0 70%, 24% 48%, 4% 18%, 38% 30%);
+}
+@keyframes bang { 0% { transform: scale(.2); opacity: 0; } 12% { transform: scale(1.25); opacity: 1; } 25% { transform: scale(1); } 70% { opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
+.leaflet-popup-content { font-size: 15px; line-height: 1.35; }
+.leaflet-container { font: inherit; }
+.leaflet-control-layers-toggle { width: 44px !important; height: 44px !important; }
+.leaflet-touch .leaflet-bar a { width: 40px; height: 40px; line-height: 40px; }
+
+/* Replay */
+.rp-controls { padding: 10px 12px; }
+.rp-clock { font-size: 1.5rem; font-weight: 900; text-align: center; }
+.rp-scrub { width: 100%; height: 44px; accent-color: var(--orange); }
+.rp-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.rp-buttons .btn { margin: 0; min-height: 56px; padding: 6px; font-size: 1rem; }
+.rp-buttons select { padding: 4px 6px !important; font-weight: 800 !important; text-align: center; }
+.rp-list { padding: 0 12px 20px; }
+.rp-ev { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--green); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; min-height: 48px; }
+.rp-ev.gun { border-left-color: var(--red); }
+.rp-ev.future { opacity: .45; }
+.rp-ev.current { outline: 3px solid var(--orange); }
+
+@media (min-width: 900px) {
+  .map { height: 66vh; }
+}
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="brand">DEER <span>CAMP</span></div>
+  <button class="menu-btn" id="menuBtn" aria-label="Open menu" aria-haspopup="true" aria-expanded="false">
+    <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2.4H3zm0 4.8h18v2.4H3zm0 4.8h18V18H3z"/></svg>
+  </button>
+</header>
+<div class="statusbar" id="statusbar">
+  <span id="netStatus"><span class="dot off"></span>Checking…</span>
+  <button id="syncStatus" aria-label="Synchronization status. Tap to sync now.">…</button>
+</div>
+<div id="banners"></div>
+
+<main>
+  <!-- Sign in (shared mode) -->
+  <section class="screen" id="screen-signin" aria-labelledby="signinTitle">
+    <h2 id="signinTitle">Sign in to Deer Camp</h2>
+    <p class="muted">You only need to do this once on this phone.</p>
+    <div class="card">
+      <form id="signinForm" autocomplete="on">
+        <label class="field">Email
+          <input type="email" id="siEmail" autocomplete="username" inputmode="email" autocapitalize="none" required>
+        </label>
+        <label class="field">Password
+          <input type="password" id="siPassword" autocomplete="current-password" required minlength="6">
+        </label>
+        <label class="field hidden" id="siNameWrap">Your name (as the camp knows you)
+          <input type="text" id="siName" autocomplete="name" maxlength="60">
+        </label>
+        <p class="err" id="siError" role="alert"></p>
+        <button class="btn btn-primary btn-big" type="submit" id="siSubmit">SIGN IN</button>
+      </form>
+      <button class="btn-link" id="siToggle" type="button">First time? Create an account</button>
+    </div>
+    <div class="card hidden" id="siPending">
+      <h3>Waiting for approval</h3>
+      <p id="siPendingText">Your account has been created. The camp administrator needs to add you before you can record.</p>
+      <button class="btn btn-primary" id="siRecheck">CHECK AGAIN</button>
+      <button class="btn" id="siSignOut2">SIGN OUT</button>
+    </div>
+    <p class="small muted">No internet right now? Sign-in needs a connection the first time. After that, Deer Camp works without service.</p>
+  </section>
+
+  <!-- Hunter selection (phone-only mode) -->
+  <section class="screen" id="screen-hunter">
+    <h2>Who is hunting?</h2>
+    <p class="muted small">Phone-only mode: records stay on this phone and are not shared. Set up sharing in Settings → Connection setup.</p>
+    <div id="localHunterList"></div>
+    <div class="card">
+      <label class="field">Add a hunter
+        <input type="text" id="newLocalHunter" maxlength="60" placeholder="Name">
+      </label>
+      <button class="btn" id="addLocalHunter">ADD HUNTER</button>
+    </div>
+  </section>
+
+  <!-- Stand selection -->
+  <section class="screen" id="screen-stand">
+    <h2>Which stand are you hunting?</h2>
+    <div id="standList"></div>
+    <div id="standEmpty" class="card hidden"></div>
+    <button class="btn" id="standCancel">BACK</button>
+  </section>
+
+  <!-- Home -->
+  <section class="screen" id="screen-home">
+    <div class="card home-id">
+      <span class="k">Hunter:</span><span class="v" id="homeHunter">—</span><span></span>
+      <span class="k">Stand:</span><span class="v" id="homeStand">—</span>
+      <button class="btn btn-inline" id="changeStand">CHANGE</button>
+    </div>
+    <div class="card">
+      <div class="hunt-state">
+        <div><b id="huntStateText">Not hunting</b><div class="small muted" id="huntStateSub"></div></div>
+        <button class="btn btn-inline btn-primary" id="huntToggle">START HUNT</button>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-big" id="logDeerBtn">LOG DEER SIGHTING</button>
+    <button class="btn btn-danger btn-big" id="gunshotBtn">GUNSHOT HEARD</button>
+    <div class="counts">
+      <div class="count"><b id="cntDeer">0</b>Deer sightings today</div>
+      <div class="count gun"><b id="cntGun">0</b>Gunshots today</div>
+    </div>
+    <p class="small muted center" id="cntCamp"></p>
+    <div class="card hidden" id="lastRecCard">
+      <div class="last-rec">
+        <div><div class="small muted">Your last entry</div><b id="lastRecText"></b><div class="small" id="lastRecSync"></div></div>
+        <button class="btn btn-inline" id="lastRecUndo">UNDO</button>
+      </div>
+    </div>
+    <p class="weather-line center" id="weatherLine"></p>
+  </section>
+
+  <!-- Live map -->
+  <section class="screen map-screen" id="screen-map">
+    <div class="filters">
+      <div class="row">
+        <select id="lmStand" aria-label="Stand filter"></select>
+        <select id="lmTime" aria-label="Time filter">
+          <option value="today">Today</option><option value="7d">Last 7 days</option><option value="all">All records</option>
+        </select>
+      </div>
+      <div class="chips" id="lmTypes">
+        <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
+        <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
+        <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
+        <button class="chip" data-type="gunshot" aria-pressed="true">Gunshots</button>
+        <button class="chip" data-type="sector" aria-pressed="false">Distance range</button>
+      </div>
+    </div>
+    <div class="map-wrap"><div class="map" id="liveMap"></div><div class="map-note hidden" id="lmNote"></div></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--orange);border-radius:3px"></i>Stand</span>
+      <span><i class="sw" style="background:var(--buck)"></i>Buck</span>
+      <span><i class="sw" style="background:var(--doe)"></i>Doe</span>
+      <span><i class="sw" style="background:var(--unk)"></i>Unknown</span>
+      <span><b style="color:var(--red)">- - →</b> Gunshot heard from (direction only)</span>
+    </div>
+    <p class="small muted" style="padding:0 12px" id="lmCount"></p>
+  </section>
+
+  <!-- Heat map -->
+  <section class="screen map-screen" id="screen-heat">
+    <div class="filters">
+      <div class="row">
+        <select id="hmStand" aria-label="Stand filter"></select>
+        <select id="hmTime" aria-label="Time filter">
+          <option value="today">Today</option><option value="7d">Last 7 days</option>
+          <option value="all" selected>All records</option><option value="custom">Custom dates…</option>
+        </select>
+      </div>
+      <div class="row hidden" id="hmCustom">
+        <label class="small" style="flex:1">From<input class="big" type="date" id="hmFrom"></label>
+        <label class="small" style="flex:1">To<input class="big" type="date" id="hmTo"></label>
+      </div>
+      <div class="chips" id="hmTypes">
+        <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
+        <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
+        <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
+        <button class="chip" data-type="weight" aria-pressed="true">Weight by number of deer</button>
+      </div>
+    </div>
+    <div class="map-wrap"><div class="map" id="heatMap"></div><div class="map-note hidden" id="hmNote"></div></div>
+    <p class="small" style="padding:8px 12px 0"><b>Note:</b> the heat map shows where hunters <i>reported</i> deer (estimated from direction and distance). It is not a count of how many deer live there — the same deer may be reported more than once.</p>
+    <p class="small muted" style="padding:0 12px" id="hmCount"></p>
+  </section>
+
+  <!-- Replay -->
+  <section class="screen map-screen" id="screen-replay">
+    <div class="filters">
+      <div class="row">
+        <select id="rpSource" aria-label="Data source">
+          <option value="camp">Camp records</option><option value="import">Imported files</option>
+        </select>
+        <select id="rpDate" aria-label="Date"></select>
+        <select id="rpStand" aria-label="Stand filter"></select>
+      </div>
+      <div class="chips">
+        <button class="chip" id="rpDeer" aria-pressed="true">Deer</button>
+        <button class="chip" id="rpGun" aria-pressed="true">Gunshots</button>
+        <button class="chip" id="rpStands" aria-pressed="true">Show stands</button>
+      </div>
+    </div>
+    <div class="map-wrap"><div class="map" id="replayMap" style="height:46vh;height:46dvh"></div><div class="map-note hidden" id="rpNote"></div></div>
+    <div class="rp-controls">
+      <div class="rp-clock" id="rpClock">--:--</div>
+      <p class="center small" id="rpNow" aria-live="polite" style="min-height:2.6em;margin:2px 0"></p>
+      <input type="range" class="rp-scrub" id="rpScrub" min="0" max="1000" value="0" aria-label="Timeline">
+      <div class="rp-buttons">
+        <button class="btn btn-primary" id="rpPlay">▶ PLAY</button>
+        <button class="btn" id="rpRestart">⟲ RESTART</button>
+        <button class="btn" id="rpNext">NEXT ⏭</button>
+        <select id="rpSpeed" class="big" aria-label="Playback speed" style="margin:0;min-height:56px">
+          <option value="1">1x</option><option value="5">5x</option><option value="10">10x</option>
+          <option value="30" selected>30x</option><option value="60">60x</option><option value="300">300x</option>
+        </select>
+      </div>
+      <p class="small muted" id="rpInfo"></p>
+    </div>
+    <div class="rp-list" id="rpList"></div>
+  </section>
+
+  <!-- Activity -->
+  <section class="screen" id="screen-activity">
+    <h2>Camp Activity</h2>
+    <div class="chips" id="actRange">
+      <button class="chip" data-r="today" aria-pressed="true">Today</button>
+      <button class="chip" data-r="7d" aria-pressed="false">Last 7 days</button>
+      <button class="chip" data-r="all" aria-pressed="false">All</button>
+    </div>
+    <p class="small banner info hidden" id="actOffline"></p>
+    <div id="actList"></div>
+  </section>
+
+  <!-- Settings -->
+  <section class="screen" id="screen-settings">
+    <h2>Settings</h2>
+
+    <div class="card">
+      <h3>You</h3>
+      <p id="setWho"></p>
+      <button class="btn" id="setSwitch">SWITCH HUNTER / SIGN OUT</button>
+      <div class="check"><input type="checkbox" id="setBigText"><label for="setBigText">Extra-large text</label></div>
+    </div>
+
+    <div class="card">
+      <h3>Sync</h3>
+      <p id="setSync"></p>
+      <button class="btn btn-primary" id="setSyncNow">SYNC NOW</button>
+      <div id="setSyncErrors" class="small"></div>
+    </div>
+
+    <div class="card">
+      <h3>Download hunt JSON</h3>
+      <div class="chips" id="exScope">
+        <button class="chip" data-s="session" aria-pressed="false">One hunt</button>
+        <button class="chip" data-s="date" aria-pressed="true">One day</button>
+        <button class="chip" data-s="range" aria-pressed="false">Date range</button>
+        <button class="chip" data-s="all" aria-pressed="false">Everything</button>
+      </div>
+      <label class="field hidden" id="exSessionWrap">Hunt session<select id="exSession"></select></label>
+      <label class="field" id="exDateWrap">Date<input type="date" id="exDate"></label>
+      <div class="btn-row hidden" id="exRangeWrap">
+        <label class="field">From<input type="date" id="exFrom"></label>
+        <label class="field">To<input type="date" id="exTo"></label>
+      </div>
+      <button class="btn btn-primary" id="exBtn">DOWNLOAD HUNT JSON</button>
+      <button class="btn hidden" id="exShare">SHARE HUNT JSON</button>
+      <p class="small muted" id="exInfo"></p>
+    </div>
+
+    <div class="card">
+      <h3>Import hunt JSON</h3>
+      <p class="small muted">Imported hunts go into a separate replay list. They are never uploaded or mixed into camp records.</p>
+      <input type="file" id="imFile" accept=".json,application/json" class="hidden">
+      <button class="btn" id="imBtn">IMPORT HUNT JSON</button>
+      <p class="small" id="imInfo"></p>
+      <button class="btn hidden" id="imClear">REMOVE IMPORTED DATA</button>
+    </div>
+
+    <div class="card" id="setStandsCard">
+      <h3>Stands</h3>
+      <p class="small muted" id="setStandsNote"></p>
+      <div id="setStandList"></div>
+      <button class="btn btn-primary" id="setAddStand">ADD STAND</button>
+    </div>
+
+    <div class="card hidden" id="setHuntersCard">
+      <h3>Hunters</h3>
+      <div id="setHunterList"></div>
+      <h3 style="margin-top:12px">Add a hunter</h3>
+      <p class="small muted">Enter their name and email. They then open Deer Camp, tap "Create an account" and use that same email.</p>
+      <label class="field">Name<input type="text" id="invName" maxlength="60"></label>
+      <label class="field">Email<input type="email" id="invEmail" autocapitalize="none"></label>
+      <div class="check"><input type="checkbox" id="invAdmin"><label for="invAdmin">Camp administrator</label></div>
+      <button class="btn btn-primary" id="invAdd">ADD HUNTER</button>
+      <div id="invList" class="small"></div>
+    </div>
+
+    <details class="card">
+      <summary><b>Connection setup</b> (for the camp administrator)</summary>
+      <p class="small muted">Supabase project URL and PUBLISHABLE key. Never enter the secret/service-role key. Leave empty for phone-only mode.</p>
+      <label class="field">Supabase URL<input type="url" id="cfgUrl" placeholder="https://xxxx.supabase.co" autocapitalize="none"></label>
+      <label class="field">Publishable key<input type="text" id="cfgKey" autocapitalize="none" spellcheck="false"></label>
+      <button class="btn" id="cfgSave">SAVE CONNECTION</button>
+      <p class="small" id="cfgInfo"></p>
+    </details>
+
+    <div class="card">
+      <h3>About this phone</h3>
+      <p class="small" id="setAbout"></p>
+      <button class="btn" id="setReload">RELOAD APP</button>
+    </div>
+  </section>
+</main>
+
+<!-- Deer sighting workflow -->
+<div class="overlay" id="wizard" role="dialog" aria-modal="true" aria-label="Log deer sighting">
+  <div class="ov-head">
+    <button id="wzBack">◀ BACK</button>
+    <div class="title" id="wzTitle">DEER SIGHTING</div>
+    <button id="wzCancel">CANCEL</button>
+  </div>
+  <div class="ov-body" id="wzBody"></div>
+</div>
+
+<!-- Gunshot workflow -->
+<div class="overlay" id="gunshot" role="dialog" aria-modal="true" aria-label="Gunshot heard">
+  <div class="ov-head">
+    <span style="min-width:88px"></span>
+    <div class="title">GUNSHOT HEARD</div>
+    <button id="gsCancel">CANCEL</button>
+  </div>
+  <div class="ov-body">
+    <p class="stepnum" id="gsTime"></p>
+    <p class="question">Which direction did the gunshot come from?</p>
+    <div id="gsCompass"></div>
+  </div>
+</div>
+
+<!-- Confirmation -->
+<div class="overlay" id="confirm" role="alertdialog" aria-modal="true" aria-live="assertive">
+  <div class="ov-body">
+    <div class="confirm-box" id="cfBox">
+      <div class="big-icon" id="cfIcon">✔</div>
+      <div class="msg" id="cfMsg">SAVED</div>
+      <p id="cfDetail"></p>
+    </div>
+    <button class="btn btn-primary btn-big" id="cfOk">OK</button>
+    <button class="btn" id="cfUndo">UNDO — THIS WAS A MISTAKE</button>
+  </div>
+</div>
+
+<!-- Menu -->
+<div class="menu-panel" id="menu" aria-hidden="true">
+  <nav aria-label="Main menu">
+    <button class="btn" data-go="home"><span class="ic">🏠</span>Home</button>
+    <button class="btn" data-go="map"><span class="ic">🗺️</span>Live Map</button>
+    <button class="btn" data-go="heat"><span class="ic">🔥</span>Deer Heat Map</button>
+    <button class="btn" data-go="replay"><span class="ic">⏯️</span>Hunt Replay</button>
+    <button class="btn" data-go="activity"><span class="ic">📋</span>Camp Activity</button>
+    <button class="btn" data-go="settings"><span class="ic">⚙️</span>Settings</button>
+    <button class="btn btn-dark" id="menuClose">CLOSE MENU</button>
+  </nav>
+</div>
+
+<div class="dialog-wrap" id="dialog"><div class="dialog" role="dialog" aria-modal="true" id="dialogBox"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script src="js/core.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/leaflet-heat.js"></script>
+<script src="vendor/supabase.js"></script>
+<script>
+'use strict';
+(function () {
+const C = window.DeerCore;
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const fmtTimeSec = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const fmtDay = (iso) => new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+const fmtDateKey = (k) => { const b = C.localDayBounds(k); return new Date(b.start).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
+const todayKey = () => C.localDateKey(new Date().toISOString());
+const STORE_FOR = { hunting_sessions: 'sessions', deer_sightings: 'sightings', gunshot_reports: 'gunshots' };
+
+function withTimeout(p, ms, label) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error((label || 'Request') + ' timed out')), ms))]);
+}
+function isNetworkError(e) {
+  if (!e) return false;
+  const m = String(e.message || e.details || e);
+  return e.name === 'TypeError' || /failed to fetch|networkerror|load failed|network request failed|timed out|fetch failed/i.test(m);
+}
+
+// ======================================================= IndexedDB storage
+const DB = {
+  db: null,
+  open() {
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open('deer-camp', 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        const mk = (name, keyPath, idx) => {
+          if (d.objectStoreNames.contains(name)) return;
+          const s = d.createObjectStore(name, { keyPath });
+          (idx || []).forEach((i) => s.createIndex(i, i));
+        };
+        mk('meta', 'key');
+        mk('stands', 'id');
+        mk('hunters', 'id');
+        mk('sessions', 'id', ['started_at']);
+        mk('sightings', 'id', ['observed_at']);
+        mk('gunshots', 'id', ['observed_at']);
+        mk('outbox', 'key');
+        mk('weather', 'stand_id');
+        mk('imports', 'key');
+      };
+      req.onsuccess = () => {
+        this.db = req.result;
+        this.db.onversionchange = () => { this.db.close(); location.reload(); };
+        resolve();
+      };
+      req.onerror = () => reject(req.error || new Error('Could not open phone storage'));
+      req.onblocked = () => reject(new Error('Phone storage is busy in another tab. Close other Deer Camp tabs.'));
+    });
+  },
+  req(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  get(store, key) { return this.req(this.db.transaction(store).objectStore(store).get(key)); },
+  all(store) { return this.req(this.db.transaction(store).objectStore(store).getAll()); },
+  count(store) { return this.req(this.db.transaction(store).objectStore(store).count()); },
+  write(stores, fn) {
+    return new Promise((resolve, reject) => {
+      let t;
+      try { t = this.db.transaction(stores, 'readwrite', { durability: 'strict' }); } catch (e) {
+        try { t = this.db.transaction(stores, 'readwrite'); } catch (e2) { reject(e2); return; }
+      }
+      let out;
+      t.oncomplete = () => resolve(out);
+      t.onerror = () => reject(t.error || new Error('Phone storage write failed'));
+      t.onabort = () => reject(t.error || new Error('Phone storage write was cancelled'));
+      try { out = fn(t); } catch (e) { try { t.abort(); } catch (_) {} reject(e); }
+    });
+  },
+  put(store, val) { return this.write([store], (t) => { t.objectStore(store).put(val); }); },
+  del(store, key) { return this.write([store], (t) => { t.objectStore(store).delete(key); }); },
+  async getMeta(k, d) { const r = await this.get('meta', k); return r ? r.value : (d === undefined ? null : d); },
+  setMeta(k, v) { return this.put('meta', { key: k, value: v }); }
+};
+
+// ======================================================= App state
+const S = {
+  identity: null,        // {mode:'cloud'|'local', hunter_id, display_name, is_admin, email}
+  stands: [], hunters: [],
+  standId: null, session: null,
+  lastRecord: null,      // {store, table, id}
+  screen: null, online: navigator.onLine,
+  pendingMine: 0, pendingOther: 0, failed: 0
+};
+const standById = (id) => S.stands.find((s) => s.id === id);
+const hunterName = (id) => { const h = S.hunters.find((x) => x.id === id); return h ? h.display_name : (S.identity && S.identity.hunter_id === id ? S.identity.display_name : 'Hunter'); };
+const standName = (id, rec) => { const s = standById(id); return s ? s.name : (rec && rec._stand_name) || 'Unknown stand'; };
+const isCloudId = () => S.identity && S.identity.mode === 'cloud';
+
+// ======================================================= Config & Supabase
+function getConfig() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem('deercamp-config') || 'null'); } catch (_) {}
+  const base = window.DEER_CAMP_CONFIG || {};
+  return {
+    supabaseUrl: ((o && o.supabaseUrl) || base.supabaseUrl || '').trim().replace(/\/+$/, ''),
+    supabaseKey: ((o && o.supabaseKey) || base.supabaseKey || '').trim()
+  };
+}
+
+const Cloud = {
+  sb: null, channel: null,
+  init() {
+    const cfg = getConfig();
+    if (!cfg.supabaseUrl || !cfg.supabaseKey || !window.supabase) return;
+    try {
+      this.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'deercamp-auth' }
+      });
+    } catch (e) { console.error('Supabase init failed', e); this.sb = null; }
+  },
+  enabled() { return !!this.sb; },
+  /** Returns the current auth session, null if signed out. Throws on network trouble. */
+  async session() {
+    const { data, error } = await withTimeout(this.sb.auth.getSession(), 12000, 'Sign-in check');
+    if (error && isNetworkError(error)) throw error;
+    return (data && data.session) || null;
+  },
+  async profile(uid) {
+    const { data, error } = await withTimeout(this.sb.from('profiles').select('id,display_name,is_admin,is_active').eq('id', uid).maybeSingle(), 15000, 'Profile');
+    if (error) throw error;
+    return data;
+  },
+  subscribe() {
+    if (!this.sb || this.channel) return;
+    try {
+      const ch = this.sb.channel('deer-camp-changes');
+      ['deer_sightings', 'gunshot_reports', 'hunting_sessions', 'stands'].forEach((table) => {
+        ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => Sync.pullSoon());
+      });
+      ch.subscribe();
+      this.channel = ch;
+    } catch (e) { console.warn('Realtime unavailable', e); }
+  },
+  unsubscribe() {
+    if (this.channel) { try { this.sb.removeChannel(this.channel); } catch (_) {} this.channel = null; }
+  }
+};
+
+// ======================================================= Saving records (RECORD FIRST)
+/**
+ * Save a record to IndexedDB (and queue it for upload in shared mode) in a
+ * single transaction, then read it back to confirm. Throws on failure.
+ */
+async function saveLocal(table, rec) {
+  const store = STORE_FOR[table];
+  rec._rev = (rec._rev || 0) + 1;
+  const queued = isCloudId() && rec.hunter_id === S.identity.hunter_id;
+  rec._sync = queued ? 'pending' : 'local';
+  rec._local = true;
+  rec._error = null;
+  await DB.write([store, 'outbox'], (t) => {
+    t.objectStore(store).put(rec);
+    if (queued) {
+      t.objectStore('outbox').put({
+        key: table + ':' + rec.id, table, store, record_id: rec.id, hunter_id: rec.hunter_id,
+        rev: rec._rev, queued_at: new Date().toISOString(), attempts: 0, last_error: null
+      });
+    }
+  });
+  const back = await DB.get(store, rec.id);
+  if (!back || back._rev !== rec._rev) throw new Error('The record could not be read back from phone storage.');
+  if (queued) Sync.soon();
+  return back;
+}
+
+// ======================================================= Synchronization (SYNC SECOND)
+const Sync = {
+  running: false, again: false, authNeeded: false, lastError: null, timer: null, pullTimer: null,
+  soon(ms) { clearTimeout(this.timer); this.timer = setTimeout(() => this.run('soon'), ms == null ? 400 : ms); },
+  pullSoon() { clearTimeout(this.pullTimer); this.pullTimer = setTimeout(() => this.run('realtime'), 1500); },
+  async run(reason) {
+    if (!Cloud.enabled() || !isCloudId()) { await refreshStatus(); return; }
+    if (this.running) { this.again = true; return; }
+    if (!navigator.onLine) { await refreshStatus(); return; }
+    this.running = true;
+    await refreshStatus();
+    let changed = false;
+    try {
+      const session = await Cloud.session();
+      if (!session) { this.authNeeded = true; return; }
+      this.authNeeded = false;
+      if (session.user.id !== S.identity.hunter_id) { this.lastError = 'Signed in as a different account.'; return; }
+      changed = (await this.push(session.user.id)) || changed;
+      changed = (await this.pull()) || changed;
+      this.lastError = null;
+      setOnline(true);
+      await DB.setMeta('lastSyncAt', new Date().toISOString());
+      Cloud.subscribe();
+    } catch (e) {
+      console.warn('Sync stopped:', e);
+      this.lastError = e.message || String(e);
+      if (isNetworkError(e)) setOnline(false);
+    } finally {
+      this.running = false;
+      await refreshStatus();
+      if (changed) onDataChanged();
+      if (this.again) { this.again = false; this.soon(1000); }
+      else this.scheduleRetry();
+    }
+  },
+  /** Retry with backoff (5 s … 5 min) while uploads are still waiting. */
+  async scheduleRetry() {
+    clearTimeout(this.retryTimer);
+    const waiting = (await DB.all('outbox')).some((o) => S.identity && o.hunter_id === S.identity.hunter_id);
+    if (!waiting || this.authNeeded) { this.retryDelay = 0; return; }
+    this.retryDelay = Math.min(300000, this.retryDelay ? this.retryDelay * 2 : 5000);
+    this.retryTimer = setTimeout(() => { if (navigator.onLine) this.run('retry'); else this.retryDelay = 0; }, this.retryDelay);
+  },
+  /** Upload queued records belonging to the signed-in hunter. */
+  async push(uid) {
+    const prio = { hunting_sessions: 0, deer_sightings: 1, gunshot_reports: 1 };
+    const entries = (await DB.all('outbox')).sort((a, b) => (prio[a.table] - prio[b.table]) || a.queued_at.localeCompare(b.queued_at));
+    const blockedSessions = new Set();
+    let any = false;
+    for (const e of entries) {
+      const rec = await DB.get(e.store, e.record_id);
+      if (!rec) { await DB.del('outbox', e.key); continue; }
+      if (rec.hunter_id !== uid) continue;           // belongs to another hunter: hold, never reassign
+      if (e.table !== 'hunting_sessions' && blockedSessions.has(rec.session_id)) continue;
+      const rev = rec._rev;
+      await this.setRecordSync(e.store, rec.id, rev, 'syncing', null);
+      if (S.screen === 'home') renderHome();
+      let res;
+      try {
+        res = await withTimeout(Cloud.sb.from(e.table).upsert(C.toServer(e.table, rec), { onConflict: 'id' }).select('id'), 20000, 'Upload');
+      } catch (err) { res = { error: err }; }
+      const ok = !res.error && Array.isArray(res.data) && res.data.some((r) => r.id === rec.id);
+      if (!ok) {
+        const msg = res.error ? (res.error.message || String(res.error)) : 'Server did not confirm the save';
+        if (e.table === 'hunting_sessions') blockedSessions.add(rec.id);
+        await this.markFailed(e, rev, msg);
+        if (isNetworkError(res.error)) throw res.error;
+        continue;
+      }
+      await this.markSynced(e, rev);
+      any = true;
+    }
+    return any;
+  },
+  setRecordSync(store, id, rev, state, error) {
+    return DB.write([store], (t) => {
+      const os = t.objectStore(store);
+      const r = os.get(id);
+      r.onsuccess = () => { const rec = r.result; if (rec && rec._rev === rev) { rec._sync = state; rec._error = error; os.put(rec); } };
+    });
+  },
+  markSynced(entry, rev) {
+    return DB.write([entry.store, 'outbox'], (t) => {
+      const ob = t.objectStore('outbox'), os = t.objectStore(entry.store);
+      const r1 = ob.get(entry.key);
+      r1.onsuccess = () => { if (r1.result && r1.result.rev === rev) ob.delete(entry.key); };
+      const r2 = os.get(entry.record_id);
+      r2.onsuccess = () => {
+        const rec = r2.result;
+        if (rec && rec._rev === rev) { rec._sync = 'synced'; rec._error = null; rec._synced_at = new Date().toISOString(); os.put(rec); }
+      };
+    });
+  },
+  markFailed(entry, rev, msg) {
+    return DB.write([entry.store, 'outbox'], (t) => {
+      const ob = t.objectStore('outbox'), os = t.objectStore(entry.store);
+      const r1 = ob.get(entry.key);
+      r1.onsuccess = () => {
+        const cur = r1.result;
+        if (cur) { cur.attempts = (cur.attempts || 0) + 1; cur.last_error = msg; cur.last_attempt_at = new Date().toISOString(); ob.put(cur); }
+      };
+      const r2 = os.get(entry.record_id);
+      r2.onsuccess = () => { const rec = r2.result; if (rec && rec._rev === rev) { rec._sync = 'failed'; rec._error = msg; os.put(rec); } };
+    });
+  },
+  /** Download shared records. Never overwrites records still waiting to upload. */
+  async pull() {
+    const sb = Cloud.sb;
+    let changed = false;
+    const st = await withTimeout(sb.from('stands').select('*'), 20000, 'Stands download');
+    if (st.error) throw st.error;
+    await DB.write(['stands'], (t) => { const os = t.objectStore('stands'); os.clear(); st.data.forEach((s) => os.put(s)); });
+    const pr = await withTimeout(sb.from('profiles').select('id,display_name,is_active,is_admin'), 20000, 'Hunters download');
+    if (pr.error) throw pr.error;
+    await DB.write(['hunters'], (t) => { const os = t.objectStore('hunters'); os.clear(); pr.data.forEach((p) => os.put(p)); });
+    const me = pr.data.find((p) => p.id === S.identity.hunter_id);
+    if (me) { S.identity.display_name = me.display_name; S.identity.is_admin = !!me.is_admin; S.identity.is_active = !!me.is_active; await DB.setMeta('identity', S.identity); }
+    await loadCatalog();
+
+    const since = await DB.getMeta('lastPullAt');
+    let maxSeen = since;
+    for (const table of ['hunting_sessions', 'deer_sightings', 'gunshot_reports']) {
+      let from = 0;
+      const page = 1000;
+      for (;;) {
+        let q = sb.from(table).select('*').order('updated_at', { ascending: true }).range(from, from + page - 1);
+        if (since) q = q.gte('updated_at', new Date(Date.parse(since) - 120000).toISOString());
+        const res = await withTimeout(q, 30000, 'Records download');
+        if (res.error) throw res.error;
+        const rows = res.data || [];
+        if (rows.length) {
+          await this.storeRemote(table, rows);
+          changed = true;
+          rows.forEach((r) => { if (!maxSeen || Date.parse(r.updated_at) > Date.parse(maxSeen)) maxSeen = r.updated_at; });
+        }
+        if (rows.length < page) break;
+        from += page;
+      }
+    }
+    if (maxSeen) await DB.setMeta('lastPullAt', new Date(Date.parse(maxSeen)).toISOString());
+    return changed;
+  },
+  storeRemote(table, rows) {
+    const store = STORE_FOR[table];
+    const tsFields = ['started_at', 'ended_at', 'observed_at', 'voided_at', 'recorded_at'];
+    return DB.write([store, 'outbox'], (t) => {
+      const os = t.objectStore(store), ob = t.objectStore('outbox');
+      rows.forEach((row) => {
+        const r = ob.get(table + ':' + row.id);
+        r.onsuccess = () => {
+          if (r.result) return; // local change still waiting to upload: keep it
+          const rec = {};
+          C.SERVER_FIELDS[table].forEach((f) => { rec[f] = row[f] === undefined ? null : row[f]; });
+          tsFields.forEach((f) => { if (rec[f]) rec[f] = new Date(rec[f]).toISOString(); });
+          ['first_seen_bearing', 'heading_bearing', 'bearing', 'distance_min_yards', 'distance_max_yards'].forEach((f) => {
+            if (rec[f] != null) rec[f] = Number(rec[f]);
+          });
+          rec._sync = 'synced'; rec._rev = 0; rec.updated_at = row.updated_at;
+          os.put(rec);
+        };
+      });
+    });
+  }
+};
+
+async function syncCounts() {
+  const out = await DB.all('outbox');
+  const me = S.identity && S.identity.hunter_id;
+  S.pendingMine = out.filter((o) => o.hunter_id === me).length;
+  S.pendingOther = out.length - S.pendingMine;
+  S.failed = out.filter((o) => o.hunter_id === me && o.last_error).length;
+  return out;
+}
+
+function setOnline(v) {
+  if (S.online === v) return;
+  S.online = v;
+  refreshStatus();
+}
+
+async function refreshStatus() {
+  if (!DB.db) return;
+  await syncCounts();
+  const online = navigator.onLine && S.online !== false;
+  $('#netStatus').innerHTML = online ? '<span class="dot on"></span>Online' : '<span class="dot off"></span>Offline (no service)';
+  const el = $('#syncStatus');
+  let txt, cls;
+  if (!isCloudId()) { txt = '📱 Saved on Phone (sharing off)'; cls = 'sync-wait'; }
+  else if (Sync.running) { txt = '⟳ Syncing…'; cls = 'sync-wait'; }
+  else if (Sync.authNeeded) { txt = '⚠ Sign in to sync' + (S.pendingMine ? ' (' + S.pendingMine + ' waiting)' : ''); cls = 'sync-bad'; }
+  else if (S.failed && online) { txt = '⚠ Sync Failed — tap to retry'; cls = 'sync-bad'; }
+  else if (S.pendingMine) { txt = '⏳ Waiting to Sync (' + S.pendingMine + ')'; cls = 'sync-wait'; }
+  else { txt = '✓ Synced'; cls = 'sync-ok'; }
+  el.textContent = txt;
+  el.className = cls;
+  if (S.screen === 'settings') renderSettingsSync();
+}
+
+function syncLabel(rec) {
+  switch (rec._sync) {
+    case 'pending': return ['pending', 'Waiting to Sync'];
+    case 'syncing': return ['pending', 'Syncing'];
+    case 'failed': return ['failed', 'Sync Failed'];
+    case 'local': return ['pending', 'Saved on Phone'];
+    case 'synced': return ['synced', 'Synced'];
+    default: return ['synced', 'Synced'];
+  }
+}
+
+// ======================================================= Weather (never blocks recording)
+const Weather = {
+  async refresh(stand, force) {
+    if (!stand || !navigator.onLine) return;
+    const cached = await DB.get('weather', stand.id);
+    if (!force && cached && Date.now() - Date.parse(cached.retrieved_at) < 30 * 60000) return;
+    const vars = 'temperature_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation,weather_code';
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + stand.latitude.toFixed(5) + '&longitude=' + stand.longitude.toFixed(5) +
+      '&current=' + vars + '&hourly=' + vars + '&past_days=1&forecast_days=2&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT&timeformat=unixtime';
+    try {
+      const r = await withTimeout(fetch(url, { cache: 'no-store' }), 10000, 'Weather');
+      if (!r.ok) return;
+      const j = await r.json();
+      const toIso = (u) => new Date(u * 1000).toISOString();
+      const current = j.current ? Object.assign({}, j.current, { time: toIso(j.current.time) }) : null;
+      const hourly = j.hourly ? Object.assign({}, j.hourly, { time: (j.hourly.time || []).map(toIso) }) : null;
+      await DB.put('weather', { stand_id: stand.id, retrieved_at: new Date().toISOString(), current, hourly });
+      if (S.screen === 'home') renderWeather();
+    } catch (e) { console.info('Weather unavailable:', e.message); }
+  },
+  async snapshot(standId, observedIso) {
+    try { return C.pickWeather(await DB.get('weather', standId), observedIso, Date.now()); } catch (_) { return null; }
+  }
+};
+
+async function renderWeather() {
+  const el = $('#weatherLine');
+  const stand = standById(S.standId);
+  if (!stand) { el.textContent = ''; return; }
+  const w = await Weather.snapshot(stand.id, new Date().toISOString());
+  if (!w) { el.textContent = navigator.onLine ? 'Weather loading…' : 'No weather saved for this stand yet.'; return; }
+  const parts = [];
+  if (w.temperature_f != null) parts.push(Math.round(w.temperature_f) + '°F');
+  if (w.wind_speed_mph != null) parts.push('Wind ' + (w.wind_direction_deg != null ? 'from ' + C.directionFor(w.wind_direction_deg) + ' ' : '') + Math.round(w.wind_speed_mph) + ' mph');
+  if (w.conditions) parts.push(w.conditions);
+  el.textContent = parts.join(' · ') + (w.kind === 'cached' ? ' (saved earlier, ' + fmtTime(w.retrieved_at) + ')' : '');
+}
+
+// ======================================================= UI helpers
+let toastTimer;
+function toast(msg, ms) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 3000);
+}
+
+const Dialog = {
+  open(html) { $('#dialogBox').innerHTML = html; $('#dialog').classList.add('open'); },
+  close() { $('#dialog').classList.remove('open'); $('#dialogBox').innerHTML = ''; },
+  confirm(title, text, okLabel, cancelLabel, danger) {
+    return new Promise((resolve) => {
+      this.open('<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
+        '<button class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + '" data-v="1">' + esc(okLabel || 'YES') + '</button>' +
+        '<button class="btn" data-v="0">' + esc(cancelLabel || 'NO') + '</button>');
+      $$('#dialogBox button').forEach((b) => b.onclick = () => { this.close(); resolve(b.dataset.v === '1'); });
+    });
+  },
+  choose(title, text, options) {
+    return new Promise((resolve) => {
+      this.open('<h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') +
+        options.map((o, i) => '<button class="btn ' + (o.cls || '') + '" data-i="' + i + '">' + esc(o.label) + '</button>').join('') +
+        '<button class="btn btn-dark" data-i="-1">CANCEL</button>');
+      $$('#dialogBox button').forEach((b) => b.onclick = () => { this.close(); const i = +b.dataset.i; resolve(i < 0 ? null : options[i].value); });
+    });
+  },
+  /** Form dialog. onSubmit(form, showError) resolves true when finished; false keeps the dialog open. */
+  form(title, fieldsHtml, okLabel, onSubmit) {
+    return new Promise((resolve) => {
+      this.open('<h3>' + esc(title) + '</h3><form id="dlgForm">' + fieldsHtml + '<p class="err" id="dlgErr" role="alert"></p>' +
+        '<button class="btn btn-primary" type="submit" id="dlgOk">' + esc(okLabel || 'SAVE') + '</button>' +
+        '<button class="btn" type="button" id="dlgCancel">CANCEL</button></form>');
+      $('#dlgCancel').onclick = () => { this.close(); resolve(false); };
+      $('#dlgForm').onsubmit = async (ev) => {
+        ev.preventDefault();
+        $('#dlgOk').disabled = true;
+        $('#dlgErr').textContent = '';
+        try {
+          if (await onSubmit($('#dlgForm'), (m) => { $('#dlgErr').textContent = m; })) { this.close(); resolve(true); }
+        } catch (e) { $('#dlgErr').textContent = e.message || String(e); }
+        finally { if ($('#dlgOk')) $('#dlgOk').disabled = false; }
+      };
+    });
+  }
+};
+
+// ======================================================= Navigation
+const SCREENS = ['signin', 'hunter', 'stand', 'home', 'map', 'heat', 'replay', 'activity', 'settings'];
+function show(name) {
+  if (name !== 'signin' && name !== 'hunter' && !S.identity) name = Cloud.enabled() ? 'signin' : 'hunter';
+  if (name === 'home' && !standById(S.standId)) name = 'stand';
+  SCREENS.forEach((s) => $('#screen-' + s).classList.toggle('active', s === name));
+  const prev = S.screen;
+  S.screen = name;
+  closeMenu();
+  window.scrollTo(0, 0);
+  if (prev === 'replay' && name !== 'replay') Replay.pause();
+  if (name === 'home') renderHome();
+  if (name === 'stand') renderStandPicker();
+  if (name === 'hunter') renderLocalHunters();
+  if (name === 'map') LiveMap.show();
+  if (name === 'heat') HeatMap.show();
+  if (name === 'replay') Replay.show();
+  if (name === 'activity') renderActivity();
+  if (name === 'settings') renderSettings();
+  if ((name === 'map' || name === 'activity' || name === 'heat') && isCloudId()) Sync.soon(50);
+}
+function openMenu() { $('#menu').classList.add('open'); $('#menu').setAttribute('aria-hidden', 'false'); $('#menuBtn').setAttribute('aria-expanded', 'true'); }
+function closeMenu() { $('#menu').classList.remove('open'); $('#menu').setAttribute('aria-hidden', 'true'); $('#menuBtn').setAttribute('aria-expanded', 'false'); }
+
+function onDataChanged() {
+  if (S.screen === 'home') renderHome();
+  if (S.screen === 'map') LiveMap.render();
+  if (S.screen === 'heat') HeatMap.render();
+  if (S.screen === 'activity') renderActivity();
+  if (S.screen === 'replay' && !Replay.playing) Replay.reload(true);
+  if (S.screen === 'stand') renderStandPicker();
+}
+
+// ======================================================= Catalog (stands, hunters)
+async function loadCatalog() {
+  S.stands = (await DB.all('stands')).sort((a, b) => a.name.localeCompare(b.name));
+  S.hunters = await DB.all('hunters');
+}
+const activeStands = () => S.stands.filter((s) => s.is_active !== false);
+
+// ======================================================= Sign-in (shared mode)
+let signUpMode = false;
+function setSignUpMode(v) {
+  signUpMode = v;
+  $('#siNameWrap').classList.toggle('hidden', !v);
+  $('#siSubmit').textContent = v ? 'CREATE ACCOUNT' : 'SIGN IN';
+  $('#siToggle').textContent = v ? 'Already have an account? Sign in' : 'First time? Create an account';
+  $('#siPassword').setAttribute('autocomplete', v ? 'new-password' : 'current-password');
+}
+
+async function completeSignIn(user) {
+  const prof = await Cloud.profile(user.id);
+  if (!prof || !prof.is_active) {
+    $('#signinForm').parentElement.classList.add('hidden');
+    $('#siPending').classList.remove('hidden');
+    $('#siPendingText').textContent = 'Signed in as ' + (user.email || 'your account') + '. The camp administrator needs to add or approve you before you can record. Ask them to add this email under Settings → Hunters.';
+    return false;
+  }
+  const prevId = S.identity && S.identity.hunter_id;
+  S.identity = { mode: 'cloud', hunter_id: user.id, display_name: prof.display_name, is_admin: !!prof.is_admin, is_active: true, email: user.email };
+  await DB.setMeta('identity', S.identity);
+  if (prevId !== user.id) { S.session = null; await DB.setMeta('activeSessionId', null); }
+  $('#siPending').classList.add('hidden');
+  $('#signinForm').parentElement.classList.remove('hidden');
+  await Sync.run('signin');
+  await loadCatalog();
+  await afterIdentity();
+  return true;
+}
+
+async function onSignInSubmit(ev) {
+  ev.preventDefault();
+  const email = $('#siEmail').value.trim().toLowerCase();
+  const pw = $('#siPassword').value;
+  const err = $('#siError');
+  err.textContent = '';
+  if (!navigator.onLine) { err.textContent = 'No internet connection. Sign-in needs service the first time.'; return; }
+  const btn = $('#siSubmit');
+  btn.disabled = true;
+  try {
+    if (signUpMode) {
+      const name = $('#siName').value.trim();
+      if (!name) { err.textContent = 'Please enter your name.'; return; }
+      const { data, error } = await withTimeout(Cloud.sb.auth.signUp({ email, password: pw, options: { data: { display_name: name } } }), 20000, 'Create account');
+      if (error) throw error;
+      if (!data.session) {
+        err.textContent = 'Account created. Check your email for a confirmation link, then come back and sign in.';
+        setSignUpMode(false);
+        return;
+      }
+      await completeSignIn(data.user);
+    } else {
+      const { data, error } = await withTimeout(Cloud.sb.auth.signInWithPassword({ email, password: pw }), 20000, 'Sign in');
+      if (error) throw error;
+      await completeSignIn(data.user);
+    }
+  } catch (e) {
+    err.textContent = /invalid login/i.test(e.message || '') ? 'Email or password is not right. Please try again.' : ('Could not sign in: ' + (e.message || e));
+  } finally { btn.disabled = false; }
+}
+
+async function signOutFlow() {
+  await syncCounts();
+  const msg = S.pendingMine
+    ? 'You have ' + S.pendingMine + ' record(s) that have not uploaded yet. They will stay safely on this phone and upload the next time ' + S.identity.display_name + ' signs in here.'
+    : 'You can sign back in at any time.';
+  if (!(await Dialog.confirm('Switch hunter?', msg, 'SWITCH HUNTER', 'STAY SIGNED IN'))) return;
+  if (S.session) await endHunt(true);
+  if (isCloudId() && Cloud.enabled()) {
+    Cloud.unsubscribe();
+    try { await withTimeout(Cloud.sb.auth.signOut({ scope: 'local' }), 8000, 'Sign out'); } catch (_) {
+      try { localStorage.removeItem('deercamp-auth'); } catch (__) {}
+    }
+  }
+  S.identity = null;
+  S.session = null;
+  await DB.setMeta('identity', null);
+  await DB.setMeta('activeSessionId', null);
+  refreshStatus();
+  show(Cloud.enabled() ? 'signin' : 'hunter');
+}
+
+// ======================================================= Local hunters (phone-only mode)
+function renderLocalHunters() {
+  const list = $('#localHunterList');
+  const hs = S.hunters.filter((h) => h._local_mode && h.is_active !== false).sort((a, b) => a.display_name.localeCompare(b.display_name));
+  list.innerHTML = hs.length ? hs.map((h) => '<button class="btn btn-big" data-id="' + h.id + '">' + esc(h.display_name) + '</button>').join('')
+    : '<p class="card">No hunters yet. Add your name below.</p>';
+  $$('button', list).forEach((b) => b.onclick = async () => {
+    const h = S.hunters.find((x) => x.id === b.dataset.id);
+    S.identity = { mode: 'local', hunter_id: h.id, display_name: h.display_name, is_admin: true };
+    await DB.setMeta('identity', S.identity);
+    afterIdentity();
+  });
+}
+async function addLocalHunter() {
+  const name = $('#newLocalHunter').value.trim();
+  if (!name) { toast('Type a name first'); return; }
+  await DB.put('hunters', { id: C.uuid(), display_name: name.slice(0, 60), is_active: true, _local_mode: true });
+  $('#newLocalHunter').value = '';
+  await loadCatalog();
+  renderLocalHunters();
+}
+
+// ======================================================= Stands & sessions
+async function afterIdentity() {
+  S.standId = (await DB.getMeta('currentStandId')) || null;
+  if (S.standId && !activeStands().some((s) => s.id === S.standId)) S.standId = null;
+  await restoreSession();
+  refreshStatus();
+  show(S.standId ? 'home' : 'stand');
+}
+
+async function restoreSession() {
+  const id = await DB.getMeta('activeSessionId');
+  S.session = null;
+  if (!id) return;
+  const s = await DB.get('sessions', id);
+  if (s && !s.ended_at && S.identity && s.hunter_id === S.identity.hunter_id) {
+    S.session = s;
+    S.standId = s.stand_id;
+  } else {
+    await DB.setMeta('activeSessionId', null);
+  }
+}
+
+function renderStandPicker() {
+  const stands = activeStands();
+  const list = $('#standList');
+  list.innerHTML = stands.map((s) => '<button class="btn btn-big list-btn" data-id="' + s.id + '"><span>' + esc(s.name) +
+    (s.description ? '<br><small>' + esc(s.description) + '</small>' : '') + '</span>' + (s.id === S.standId ? '<span>✔</span>' : '') + '</button>').join('');
+  const empty = $('#standEmpty');
+  if (!stands.length) {
+    empty.classList.remove('hidden');
+    if (isCloudId() && !S.identity.is_admin) {
+      empty.innerHTML = navigator.onLine ? '<p>No stands are set up yet. Ask the camp administrator to add stands.</p>'
+        : '<p>Stands have not been downloaded to this phone yet. Connect to the internet once to download them.</p>';
+    } else {
+      empty.innerHTML = '<p>No stands yet. Add your stands and their GPS locations in Settings.</p><button class="btn btn-primary" id="goAddStand">ADD A STAND</button>';
+      $('#goAddStand').onclick = () => { show('settings'); editStand(null); };
+    }
+  } else empty.classList.add('hidden');
+  $('#standCancel').classList.toggle('hidden', !S.standId);
+  $$('button[data-id]', list).forEach((b) => b.onclick = async () => {
+    if (S.session && S.session.stand_id !== b.dataset.id) {
+      const ok = await Dialog.confirm('Change stands?', 'Changing stands will end your current hunt at ' + standName(S.session.stand_id) + '.', 'END HUNT & CHANGE', 'KEEP HUNTING');
+      if (!ok) return;
+      await endHunt(true);
+    }
+    S.standId = b.dataset.id;
+    await DB.setMeta('currentStandId', S.standId);
+    try { localStorage.setItem('deercamp-last-stand', S.standId); } catch (_) {}
+    Weather.refresh(standById(S.standId));
+    show('home');
+  });
+}
+
+async function startHunt(auto) {
+  const stand = standById(S.standId);
+  if (!stand) { show('stand'); return null; }
+  const sess = C.buildSession({ hunter_id: S.identity.hunter_id, stand });
+  try {
+    await saveLocal('hunting_sessions', sess);
+    await DB.setMeta('activeSessionId', sess.id);
+    S.session = sess;
+    if (!auto) toast('Hunt started at ' + fmtTime(sess.started_at));
+    Weather.refresh(stand, true);
+  } catch (e) {
+    toast('Could not start hunt: ' + e.message, 6000);
+    return null;
+  }
+  renderHome();
+  return sess;
+}
+
+async function endHunt(silent) {
+  if (!S.session) return;
+  const sess = await DB.get('sessions', S.session.id) || S.session;
+  sess.ended_at = new Date().toISOString();
+  if (Date.parse(sess.ended_at) < Date.parse(sess.started_at)) sess.ended_at = sess.started_at;
+  try {
+    await saveLocal('hunting_sessions', sess);
+    await DB.setMeta('activeSessionId', null);
+    S.session = null;
+    if (!silent) toast('Hunt ended at ' + fmtTime(sess.ended_at) + '. Your records are kept.');
+  } catch (e) { toast('Could not end hunt: ' + e.message, 6000); }
+  renderHome();
+}
+
+async function ensureSession() {
+  if (S.session && S.session.stand_id === S.standId) return S.session;
+  if (S.session) await endHunt(true);
+  const s = await startHunt(true);
+  if (s) toast('Hunt started automatically');
+  return s;
+}
+
+// ======================================================= Home
+async function renderHome() {
+  if (!S.identity) return;
+  $('#homeHunter').textContent = S.identity.display_name;
+  const stand = standById(S.standId);
+  $('#homeStand').textContent = stand ? stand.name : 'Choose a stand';
+  if (S.session) {
+    const st = S.session.started_at;
+    $('#huntStateText').textContent = 'Hunting';
+    $('#huntStateSub').textContent = 'Since ' + fmtTime(st) + (C.localDateKey(st) !== todayKey() ? ' on ' + fmtDay(st) : '');
+    $('#huntToggle').textContent = 'END HUNT';
+    $('#huntToggle').className = 'btn btn-inline btn-dark';
+  } else {
+    $('#huntStateText').textContent = 'Not hunting';
+    $('#huntStateSub').textContent = 'Tap START HUNT when you are in the stand.';
+    $('#huntToggle').textContent = 'START HUNT';
+    $('#huntToggle').className = 'btn btn-inline btn-primary';
+  }
+  const day = C.localDayBounds(todayKey());
+  const inDay = (r) => { const t = Date.parse(r.observed_at); return t >= day.start && t < day.end && r.status !== 'voided'; };
+  const sightings = (await DB.all('sightings')).filter(inDay);
+  const gunshots = (await DB.all('gunshots')).filter(inDay);
+  const mine = (r) => r.hunter_id === S.identity.hunter_id;
+  $('#cntDeer').textContent = sightings.filter(mine).length;
+  $('#cntGun').textContent = gunshots.filter(mine).length;
+  const campDeer = sightings.reduce((n, r) => n + (r.quantity || 0), 0);
+  $('#cntCamp').textContent = isCloudId() ? 'Whole camp today: ' + sightings.length + ' sighting' + (sightings.length === 1 ? '' : 's') + ' (' + campDeer + ' deer reported), ' + gunshots.length + ' gunshot report' + (gunshots.length === 1 ? '' : 's') : '';
+
+  // last record by this hunter (most recently saved on this phone)
+  const lr = S.lastRecord && await DB.get(S.lastRecord.store, S.lastRecord.id);
+  const card = $('#lastRecCard');
+  if (lr && lr.status !== 'voided' && Date.now() - Date.parse(lr.recorded_at || lr.observed_at) < 6 * 3600000) {
+    card.classList.remove('hidden');
+    $('#lastRecText').textContent = fmtTime(lr.observed_at) + ' — ' + describe(lr, S.lastRecord.store === 'gunshots' ? 'gunshot' : 'deer');
+    const [cls, label] = syncLabel(lr);
+    $('#lastRecSync').innerHTML = '<span class="tag ' + cls + '">' + label + '</span>';
+  } else card.classList.add('hidden');
+  renderWeather();
+}
+
+function describe(rec, kind) {
+  if (kind === 'gunshot') return 'Gunshot Heard — ' + rec.direction;
+  return C.deerLabel(rec.quantity, rec.deer_type) + ' — First Seen ' + rec.first_seen_direction + ' (' + (C.distanceRange(rec.distance_range) || {}).label + ')' +
+    ' — ' + (rec.heading_direction ? 'Headed ' + rec.heading_direction : 'Heading not sure');
+}
+
+// ======================================================= Compass component
+/**
+ * Renders the 16-point compass. The 16 circular markers are the buttons.
+ * onPick(direction) is called after the marker is highlighted.
+ */
+function renderCompass(container, opts) {
+  const wrap = document.createElement('div');
+  wrap.className = 'compass';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', opts.label || 'Compass. North is at the top.');
+  wrap.innerHTML = '<div class="ring"></div><div class="center"><div class="you">' + esc(opts.centerText || 'YOUR STAND') + '</div><div class="pick"></div></div>';
+  const R = 42.4, half = 7.6;
+  C.DIRECTIONS.forEach((d, i) => {
+    const a = i * 22.5 * Math.PI / 180;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cpt' + (i % 4 === 0 ? ' cardinal' : '') + (i === 0 ? ' north' : '');
+    b.style.left = (50 + R * Math.sin(a) - half).toFixed(3) + '%';
+    b.style.top = (50 - R * Math.cos(a) - half).toFixed(3) + '%';
+    b.textContent = d;
+    b.dataset.dir = d;
+    b.setAttribute('aria-label', C.DIRECTION_NAMES[d]);
+    b.setAttribute('aria-pressed', 'false');
+    if (opts.selected === d) { b.classList.add('sel'); b.setAttribute('aria-pressed', 'true'); }
+    b.addEventListener('click', () => {
+      if (wrap.dataset.locked) return;
+      wrap.dataset.locked = '1';
+      $$('.cpt', wrap).forEach((x) => { x.classList.remove('sel'); x.setAttribute('aria-pressed', 'false'); });
+      b.classList.add('sel');
+      b.setAttribute('aria-pressed', 'true');
+      $('.pick', wrap).textContent = d;
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (_) {} }
+      setTimeout(() => opts.onPick(d), 260);
+    });
+    wrap.appendChild(b);
+  });
+  if (opts.selected) $('.pick', wrap).textContent = opts.selected;
+  container.innerHTML = '';
+  container.appendChild(wrap);
+  return wrap;
+}
+
+// ======================================================= Deer sighting workflow (6 steps)
+const WZ = { st: null };
+function openWizard(prefill) {
+  WZ.st = Object.assign({
+    step: 1, id: C.uuid(), observed_at: new Date().toISOString(), // captured when reporting begins
+    first: null, distance: null, heading: undefined, quantity: 1, type: null, saving: false, corrects_id: null
+  }, prefill || {});
+  $('#wizard').classList.add('open');
+  renderWizard();
+}
+function closeWizard() { $('#wizard').classList.remove('open'); WZ.st = null; }
+function wzNext() { WZ.st.step++; renderWizard(); }
+
+function renderWizard() {
+  const st = WZ.st, body = $('#wzBody');
+  $('#wzBack').style.visibility = st.step > 1 ? 'visible' : 'hidden';
+  const head = '<p class="stepnum">Step ' + st.step + ' of 6 · Seen at ' + fmtTime(st.observed_at) + (st.corrects_id ? ' · Correction' : '') + '</p>';
+  if (st.step === 1) {
+    body.innerHTML = head + '<p class="question">Which direction did you first see the deer?</p><div id="wzCompass"></div>';
+    renderCompass($('#wzCompass'), { selected: st.first, onPick: (d) => { st.first = d; wzNext(); } });
+  } else if (st.step === 2) {
+    body.innerHTML = head + '<p class="question">How far away was the deer?</p>' +
+      C.DISTANCE_RANGES.map((r) => '<button class="btn btn-big' + (st.distance === r.key ? ' btn-primary' : '') + '" data-k="' + r.key + '" style="min-height:80px">' + r.label + '</button>').join('');
+    $$('button[data-k]', body).forEach((b) => b.onclick = () => {
+      $$('button[data-k]', body).forEach((x) => x.classList.remove('btn-primary'));
+      b.classList.add('btn-primary');
+      st.distance = b.dataset.k;
+      setTimeout(wzNext, 200);
+    });
+  } else if (st.step === 3) {
+    body.innerHTML = head + '<p class="question">Which direction was the deer headed?</p><div id="wzCompass"></div>' +
+      '<button class="btn btn-orange btn-big" id="wzNotSure" style="min-height:72px">NOT SURE</button>';
+    renderCompass($('#wzCompass'), { selected: st.heading || null, centerText: 'DEER HEADED', onPick: (d) => { st.heading = d; wzNext(); } });
+    $('#wzNotSure').onclick = () => { st.heading = null; setTimeout(wzNext, 150); };
+  } else if (st.step === 4) {
+    body.innerHTML = head + '<p class="question">How many deer?</p>' +
+      '<div class="qty"><button id="qMinus" aria-label="One fewer">−</button><span class="n" id="qN" aria-live="polite">' + st.quantity + '</span><button id="qPlus" aria-label="One more">+</button></div>' +
+      '<button class="btn btn-primary btn-big" id="qNext">NEXT</button>';
+    const upd = () => { $('#qN').textContent = st.quantity; $('#qMinus').disabled = st.quantity <= 1; };
+    $('#qMinus').onclick = () => { st.quantity = Math.max(1, st.quantity - 1); upd(); };
+    $('#qPlus').onclick = () => { st.quantity = Math.min(500, st.quantity + 1); upd(); };
+    $('#qNext').onclick = wzNext;
+    upd();
+  } else if (st.step === 5) {
+    body.innerHTML = head + '<p class="question">What type of deer?</p>' +
+      [['buck', 'BUCK'], ['doe', 'DOE'], ['unknown', 'UNKNOWN']].map(([k, l]) =>
+        '<button class="btn btn-big' + (st.type === k ? ' btn-primary' : '') + '" data-t="' + k + '">' + l + '</button>').join('') +
+      '<p class="small muted center">Saw bucks and does together? Record one type now, then log a second sighting for the others.</p>';
+    $$('button[data-t]', body).forEach((b) => b.onclick = () => {
+      $$('button[data-t]', body).forEach((x) => x.classList.remove('btn-primary'));
+      b.classList.add('btn-primary');
+      st.type = b.dataset.t;
+      setTimeout(wzNext, 200);
+    });
+  } else {
+    const stand = standById(S.standId);
+    body.innerHTML = head + '<p class="question">Check and record</p><div class="card summary">' +
+      '<div><span>Stand</span><b>' + esc(stand ? stand.name : '') + '</b></div>' +
+      '<div><span>First seen</span><b>' + st.first + '</b></div>' +
+      '<div><span>Distance</span><b>' + C.distanceRange(st.distance).label + '</b></div>' +
+      '<div><span>Headed</span><b>' + (st.heading ? st.heading : 'Not sure') + '</b></div>' +
+      '<div><span>How many</span><b>' + st.quantity + '</b></div>' +
+      '<div><span>Type</span><b>' + st.type.toUpperCase() + '</b></div>' +
+      '<div><span>Time</span><b>' + fmtTime(st.observed_at) + '</b></div></div>' +
+      '<button class="btn btn-primary btn-big" id="wzSave">RECORD SIGHTING</button>' +
+      '<p class="small muted center">Tap ◀ BACK to change an answer.</p>';
+    $('#wzSave').onclick = saveSighting;
+  }
+}
+
+async function saveSighting() {
+  const st = WZ.st;
+  if (!st || st.saving) return;              // double-submission guard
+  st.saving = true;
+  const btn = $('#wzSave');
+  btn.disabled = true; btn.textContent = 'SAVING…';
+  try {
+    const stand = standById(S.standId);
+    if (!stand) throw new Error('No stand selected.');
+    const sess = await ensureSession();
+    if (!sess) throw new Error('Could not start a hunt session.');
+    const existing = await DB.get('sightings', st.id); // same UUID => already saved, do not duplicate
+    let rec = existing;
+    if (!existing) {
+      rec = C.buildSighting({
+        id: st.id, hunter_id: S.identity.hunter_id, stand, session_id: sess.id, observed_at: st.observed_at,
+        first_seen_direction: st.first, distance_range: st.distance, heading_direction: st.heading || null,
+        quantity: st.quantity, deer_type: st.type, weather: await Weather.snapshot(stand.id, st.observed_at),
+        corrects_id: st.corrects_id
+      });
+      const errs = C.validateSighting(rec);
+      if (errs.length) throw new Error(errs.join('; '));
+      await saveLocal('deer_sightings', rec);
+    }
+    S.lastRecord = { store: 'sightings', id: rec.id };
+    closeWizard();
+    showConfirm('deer', rec);
+  } catch (e) {
+    st.saving = false;
+    btn.disabled = false; btn.textContent = 'RECORD SIGHTING';
+    showSaveError(e);
+  }
+}
+
+function showSaveError(e) {
+  Dialog.open('<h3 class="err">NOT SAVED</h3><p>The record could not be saved on this phone:</p><p><b>' + esc(e.message || e) + '</b></p>' +
+    '<p>Please try again. If this keeps happening, write it down on paper.</p><button class="btn btn-primary" id="errOk">OK</button>');
+  $('#errOk').onclick = () => Dialog.close();
+}
+
+// ======================================================= Gunshot workflow
+const GS = { st: null };
+async function openGunshot() {
+  if (!standById(S.standId)) { show('stand'); return; }
+  GS.st = { id: C.uuid(), observed_at: new Date().toISOString(), saving: false }; // timestamp captured on tap
+  $('#gsTime').textContent = 'Heard at ' + fmtTimeSec(Date.parse(GS.st.observed_at));
+  $('#gunshot').classList.add('open');
+  renderCompass($('#gsCompass'), { centerText: 'SHOT CAME FROM', onPick: saveGunshot });
+}
+function closeGunshot() { $('#gunshot').classList.remove('open'); GS.st = null; }
+
+async function saveGunshot(direction) {
+  const st = GS.st;
+  if (!st || st.saving) return;
+  st.saving = true;
+  try {
+    const stand = standById(S.standId);
+    const sess = await ensureSession();
+    if (!sess) throw new Error('Could not start a hunt session.');
+    let rec = await DB.get('gunshots', st.id);
+    if (!rec) {
+      rec = C.buildGunshot({ id: st.id, hunter_id: S.identity.hunter_id, stand, session_id: sess.id, observed_at: st.observed_at, direction,
+        weather: await Weather.snapshot(stand.id, st.observed_at) });
+      const errs = C.validateGunshot(rec);
+      if (errs.length) throw new Error(errs.join('; '));
+      await saveLocal('gunshot_reports', rec);
+    }
+    S.lastRecord = { store: 'gunshots', id: rec.id };
+    closeGunshot();
+    showConfirm('gunshot', rec);
+  } catch (e) {
+    st.saving = false;
+    const wrap = $('#gsCompass .compass'); if (wrap) delete wrap.dataset.locked;
+    showSaveError(e);
+  }
+}
+
+// ======================================================= Confirmation & corrections
+let confirmTimer;
+function showConfirm(kind, rec) {
+  const online = navigator.onLine && S.online !== false;
+  const box = $('#cfBox');
+  const cloud = isCloudId();
+  box.className = 'confirm-box' + (cloud && !online ? ' offline' : '');
+  $('#cfIcon').textContent = '✔';
+  const what = kind === 'deer' ? 'SIGHTING' : 'GUNSHOT';
+  $('#cfMsg').textContent = !cloud ? what + ' SAVED ON PHONE' : (online ? what + ' SAVED' : 'SAVED ON PHONE — WILL SYNC LATER');
+  $('#cfDetail').textContent = fmtTime(rec.observed_at) + ' — ' + describe(rec, kind);
+  $('#confirm').classList.add('open');
+  $('#cfOk').focus();
+  $('#cfUndo').onclick = async () => {
+    clearTimeout(confirmTimer);
+    $('#confirm').classList.remove('open');
+    await voidRecord(kind === 'deer' ? 'deer_sightings' : 'gunshot_reports', rec.id, 'Undone by hunter right after recording', true);
+  };
+  clearTimeout(confirmTimer);
+  confirmTimer = setTimeout(closeConfirm, 6000);
+  renderHome();
+}
+function closeConfirm() { clearTimeout(confirmTimer); $('#confirm').classList.remove('open'); renderHome(); }
+
+/** Void (not delete) an observation so the original stays in the audit trail. */
+async function voidRecord(table, id, reason, quiet) {
+  const store = STORE_FOR[table];
+  const rec = await DB.get(store, id);
+  if (!rec || rec.status === 'voided') return null;
+  if (!S.identity || rec.hunter_id !== S.identity.hunter_id) { toast('You can only change your own records.'); return null; }
+  rec.status = 'voided';
+  rec.voided_at = new Date().toISOString();
+  rec.void_reason = reason;
+  try {
+    await saveLocal(table, rec);
+    toast(quiet ? 'Removed. (It is kept in history marked "voided".)' : 'Record voided');
+  } catch (e) { showSaveError(e); return null; }
+  onDataChanged();
+  return rec;
+}
+
+async function correctFlow(table, id) {
+  const store = STORE_FOR[table];
+  const rec = await DB.get(store, id);
+  if (!rec) return;
+  const choice = await Dialog.choose('Fix this record', fmtTime(rec.observed_at) + ' — ' + describe(rec, table === 'gunshot_reports' ? 'gunshot' : 'deer'), [
+    { label: 'RE-ENTER IT CORRECTLY', value: 'fix', cls: 'btn-primary' },
+    { label: 'IT WAS A MISTAKE — VOID IT', value: 'void', cls: 'btn-danger' }
+  ]);
+  if (!choice) return;
+  if (choice === 'void') { await voidRecord(table, id, 'Recorded by mistake'); return; }
+  // Correction: void the original and record a new one that keeps the original time.
+  if (rec.stand_id !== S.standId && standById(rec.stand_id)) {
+    if (S.session) await endHunt(true);
+    S.standId = rec.stand_id;
+    await DB.setMeta('currentStandId', S.standId);
+  }
+  const voided = await voidRecord(table, id, 'Corrected by hunter');
+  if (!voided) return;
+  show('home');
+  if (table === 'deer_sightings') {
+    openWizard({ observed_at: rec.observed_at, corrects_id: rec.id, first: rec.first_seen_direction, distance: rec.distance_range,
+      heading: rec.heading_direction, quantity: rec.quantity, type: rec.deer_type });
+  } else {
+    GS.st = { id: C.uuid(), observed_at: rec.observed_at, saving: false };
+    $('#gsTime').textContent = 'Correction for gunshot heard at ' + fmtTimeSec(Date.parse(rec.observed_at));
+    $('#gunshot').classList.add('open');
+    renderCompass($('#gsCompass'), { centerText: 'SHOT CAME FROM', onPick: async (d) => {
+      const st = GS.st; if (!st || st.saving) return; st.saving = true;
+      try {
+        const stand = standById(rec.stand_id) || { id: rec.stand_id, latitude: rec.stand_latitude, longitude: rec.stand_longitude };
+        const sess = await DB.get('sessions', rec.session_id);
+        const g = C.buildGunshot({ id: st.id, hunter_id: S.identity.hunter_id, stand, session_id: sess ? sess.id : rec.session_id,
+          observed_at: rec.observed_at, direction: d, weather: rec.weather, corrects_id: rec.id });
+        await saveLocal('gunshot_reports', g);
+        S.lastRecord = { store: 'gunshots', id: g.id };
+        closeGunshot(); showConfirm('gunshot', g);
+      } catch (e) { st.saving = false; showSaveError(e); }
+    } });
+  }
+}
+
+// ======================================================= Data access & filters
+async function campData() {
+  const [stands, hunters, sessions, sightings, gunshots] = await Promise.all(['stands', 'hunters', 'sessions', 'sightings', 'gunshots'].map((s) => DB.all(s)));
+  return { stands, hunters, sessions, sightings, gunshots };
+}
+async function importData() {
+  const rows = await DB.all('imports');
+  const out = { stands: [], hunters: [], sessions: [], sightings: [], gunshots: [] };
+  rows.forEach((r) => { out[r.kind].push(r.rec); });
+  return out;
+}
+function timeFilter(kind, from, to) {
+  if (kind === 'today') { const b = C.localDayBounds(todayKey()); return (t) => t >= b.start && t < b.end; }
+  if (kind === '7d') { const start = C.localDayBounds(todayKey()).end - 7 * 86400000; return (t) => t >= start; }
+  if (kind === 'custom' && from && to) { const s = C.localDayBounds(from).start, e = C.localDayBounds(to).end; return (t) => t >= s && t < e; }
+  return () => true;
+}
+function chipSet(container) {
+  const set = new Set();
+  $$('.chip', container).forEach((c) => { if (c.getAttribute('aria-pressed') === 'true') set.add(c.dataset.type || c.dataset.r || c.dataset.s); });
+  return set;
+}
+function bindChips(container, cb, single) {
+  $$('.chip', container).forEach((c) => c.addEventListener('click', () => {
+    if (single) $$('.chip', container).forEach((x) => x.setAttribute('aria-pressed', x === c ? 'true' : 'false'));
+    else c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    cb();
+  }));
+}
+function fillStandSelect(sel, stands, keep) {
+  const cur = keep ? sel.value : '';
+  sel.innerHTML = '<option value="">All stands</option>' + stands.slice().sort((a, b) => a.name.localeCompare(b.name))
+    .map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+  if (cur && stands.some((s) => s.id === cur)) sel.value = cur;
+}
+
+// ======================================================= Map helpers
+const MapKit = {
+  create(el, noteEl) {
+    const map = L.map(el, { zoomControl: true, attributionControl: true, maxZoom: 20 });
+    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 20, maxNativeZoom: 19,
+      attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    });
+    const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 20, maxNativeZoom: 19, attribution: 'Labels &copy; Esri'
+    });
+    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+    });
+    esri.addTo(map);
+    L.control.layers({ 'Satellite': esri, 'Satellite + labels': L.layerGroup([L.tileLayer(esri._url, esri.options), labels]), 'Street map': osm }, null, { position: 'topright' }).addTo(map);
+    L.control.scale({ imperial: true, metric: false }).addTo(map);
+    let tileErrors = 0;
+    const onErr = () => { tileErrors++; if (tileErrors > 2) MapKit.note(noteEl, 'Map pictures need internet. Stands and records are still shown.'); };
+    [esri, labels, osm].forEach((l) => { l.on('tileerror', onErr); l.on('tileload', () => { tileErrors = 0; }); });
+    map._dcNote = noteEl;
+    return map;
+  },
+  note(el, text) { if (!el) return; el.textContent = text || ''; el.classList.toggle('hidden', !text); },
+  fit(map, stands, extra) {
+    const pts = stands.map((s) => [s.latitude, s.longitude]).concat(extra || []);
+    if (!pts.length) { map.setView([39.5, -95], 4); return; }
+    if (pts.length === 1) { map.setView(pts[0], 17); return; }
+    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 18 });
+  },
+  standMarker(s, dim) {
+    return L.marker([s.latitude, s.longitude], {
+      icon: L.divIcon({ className: '', html: '<div class="stand-pin' + (dim ? ' dim' : '') + '"><div class="tri"></div><div class="nm">' + esc(s.name) + '</div></div>', iconSize: [120, 52], iconAnchor: [60, 14] }),
+      zIndexOffset: 500, keyboard: false
+    }).bindPopup('<b>' + esc(s.name) + '</b><br>' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? '<br>' + esc(s.description) : ''));
+  },
+  deerMarker(rec, latest) {
+    const pos = MapKit.deerPos(rec);
+    return L.marker(pos, {
+      icon: L.divIcon({ className: '', html: '<div class="deer-pin ' + rec.deer_type + (latest ? ' latest' : '') + '">' + rec.quantity + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+      zIndexOffset: 800
+    });
+  },
+  deerPos(rec) {
+    if (rec.est_latitude != null && rec.est_longitude != null) return [rec.est_latitude, rec.est_longitude];
+    const p = C.estimateSightingLocation(rec.stand_latitude, rec.stand_longitude, rec.first_seen_bearing, rec.distance_range);
+    return p ? [p.lat, p.lng] : [rec.stand_latitude, rec.stand_longitude];
+  },
+  /** Short arrow (fixed 30 m) showing the reported travel direction. Not a path. */
+  travelArrow(rec) {
+    if (rec.heading_bearing == null) return null;
+    const [lat, lng] = MapKit.deerPos(rec);
+    const len = 30;
+    const end = C.destinationPoint(lat, lng, rec.heading_bearing, len);
+    const l = C.destinationPoint(end.lat, end.lng, rec.heading_bearing + 150, 10);
+    const r = C.destinationPoint(end.lat, end.lng, rec.heading_bearing - 150, 10);
+    const color = rec.deer_type === 'doe' ? '#ffd28a' : '#ffffff';
+    return L.layerGroup([
+      L.polyline([[lat, lng], [end.lat, end.lng]], { color: '#000', weight: 7, opacity: .55 }),
+      L.polyline([[l.lat, l.lng], [end.lat, end.lng], [r.lat, r.lng]], { color: '#000', weight: 7, opacity: .55 }),
+      L.polyline([[lat, lng], [end.lat, end.lng]], { color, weight: 4 }),
+      L.polyline([[l.lat, l.lng], [end.lat, end.lng], [r.lat, r.lng]], { color, weight: 4 })
+    ]);
+  },
+  sector(rec) {
+    const pts = C.uncertaintySector(rec.stand_latitude, rec.stand_longitude, rec.first_seen_bearing, rec.distance_range);
+    return L.polygon(pts, { color: '#ffffff', weight: 1, dashArray: '4 4', fillColor: '#ffffff', fillOpacity: 0.12, interactive: false });
+  },
+  deerPopup(rec) {
+    return '<b>' + esc(C.deerLabel(rec.quantity, rec.deer_type)) + '</b><br>' + fmtDay(rec.observed_at) + ' ' + fmtTime(rec.observed_at) +
+      '<br>' + esc(hunterName(rec.hunter_id)) + ' — ' + esc(standName(rec.stand_id)) +
+      '<br>First seen ' + rec.first_seen_direction + ', ' + (C.distanceRange(rec.distance_range) || {}).label +
+      '<br>' + (rec.heading_direction ? 'Headed ' + rec.heading_direction : 'Heading not sure') +
+      '<br><i class="small">Location is an estimate from direction and distance.</i>';
+  },
+  gunAlertIcon(cls) {
+    return L.divIcon({ className: '', html: '<div class="gun-alert ' + (cls || '') + '">!</div>', iconSize: [40, 40], iconAnchor: [20, 62] });
+  }
+};
+
+function standsForRecords(stands, recs) {
+  // Records may refer to stands that are no longer active: show them too.
+  const map = new Map(stands.map((s) => [s.id, s]));
+  recs.forEach((r) => { if (!map.has(r.stand_id)) map.set(r.stand_id, { id: r.stand_id, name: standName(r.stand_id, r), latitude: r.stand_latitude, longitude: r.stand_longitude, is_active: false }); });
+  return Array.from(map.values());
+}
+
+// ======================================================= Live map
+const LiveMap = {
+  map: null, layer: null, fitted: false, poll: null,
+  init() {
+    if (this.map) return;
+    this.map = MapKit.create($('#liveMap'), $('#lmNote'));
+    this.layer = L.layerGroup().addTo(this.map);
+    $('#lmStand').onchange = () => { this.fitted = false; this.render(); };
+    $('#lmTime').onchange = () => this.render();
+    bindChips($('#lmTypes'), () => this.render());
+  },
+  show() {
+    this.init();
+    fillStandSelect($('#lmStand'), activeStands(), true);
+    setTimeout(() => { this.map.invalidateSize(); this.render(); }, 30);
+    clearInterval(this.poll);
+    this.poll = setInterval(() => { if (S.screen !== 'map') { clearInterval(this.poll); return; } if (isCloudId()) Sync.run('poll'); }, 60000);
+  },
+  async render() {
+    if (!this.map) return;
+    const d = await campData();
+    const types = chipSet($('#lmTypes'));
+    const standSel = $('#lmStand').value;
+    const tf = timeFilter($('#lmTime').value);
+    const ok = (r) => r.status !== 'voided' && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel);
+    const sightings = d.sightings.filter((r) => ok(r) && types.has(r.deer_type)).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const gunshots = types.has('gunshot') ? d.gunshots.filter(ok) : [];
+    this.layer.clearLayers();
+    const stands = standsForRecords(activeStands(), sightings.concat(gunshots));
+    stands.forEach((s) => this.layer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
+    const showSector = types.has('sector');
+    sightings.forEach((r, i) => {
+      if (showSector) this.layer.addLayer(MapKit.sector(r));
+      const a = MapKit.travelArrow(r); if (a) this.layer.addLayer(a);
+      this.layer.addLayer(MapKit.deerMarker(r, i === sightings.length - 1).bindPopup(MapKit.deerPopup(r)));
+    });
+    gunshots.forEach((g) => {
+      const end = C.destinationPoint(g.stand_latitude, g.stand_longitude, g.bearing, 400);
+      this.layer.addLayer(L.polyline([[g.stand_latitude, g.stand_longitude], [end.lat, end.lng]], { color: '#ff2a1a', weight: 4, dashArray: '10 8' })
+        .bindPopup('<b>Gunshot heard</b> from the ' + g.direction + '<br>' + fmtDay(g.observed_at) + ' ' + fmtTime(g.observed_at) + '<br>' + esc(hunterName(g.hunter_id)) + ' — ' + esc(standName(g.stand_id)) + '<br><i>Direction only — not the shot location.</i>'));
+      this.layer.addLayer(L.marker([g.stand_latitude, g.stand_longitude], { icon: MapKit.gunAlertIcon('small'), interactive: false, zIndexOffset: 900 }));
+    });
+    if (!this.fitted) {
+      const fitStands = standSel ? stands.filter((s) => s.id === standSel) : stands;
+      MapKit.fit(this.map, fitStands);
+      this.fitted = true;
+    }
+    const online = navigator.onLine;
+    $('#lmCount').textContent = sightings.length + ' deer sighting(s), ' + gunshots.length + ' gunshot report(s) shown. Times are when the hunter reported them.';
+    if (!online) MapKit.note($('#lmNote'), 'Offline: showing records saved on this phone. Other hunters’ latest activity may be missing until you have service.');
+    else if (!isCloudId()) MapKit.note($('#lmNote'), 'Phone-only mode: only records from this phone are shown.');
+    else if (!$('#lmNote').textContent.startsWith('Map pictures')) MapKit.note($('#lmNote'), '');
+  }
+};
+
+// ======================================================= Heat map
+const HeatMap = {
+  map: null, heat: null, layer: null, fitted: false,
+  init() {
+    if (this.map) return;
+    this.map = MapKit.create($('#heatMap'), $('#hmNote'));
+    this.layer = L.layerGroup().addTo(this.map);
+    $('#hmStand').onchange = () => { this.fitted = false; this.render(); };
+    $('#hmTime').onchange = () => { $('#hmCustom').classList.toggle('hidden', $('#hmTime').value !== 'custom'); this.render(); };
+    $('#hmFrom').onchange = $('#hmTo').onchange = () => this.render();
+    bindChips($('#hmTypes'), () => this.render());
+    const t = todayKey();
+    $('#hmFrom').value = C.localDateKey(new Date(Date.now() - 30 * 86400000).toISOString());
+    $('#hmTo').value = t;
+  },
+  show() {
+    this.init();
+    fillStandSelect($('#hmStand'), activeStands(), true);
+    setTimeout(() => { this.map.invalidateSize(); this.render(); }, 30);
+  },
+  async render() {
+    if (!this.map) return;
+    const d = await campData();
+    const types = chipSet($('#hmTypes'));
+    const standSel = $('#hmStand').value;
+    const tf = timeFilter($('#hmTime').value, $('#hmFrom').value, $('#hmTo').value);
+    const recs = d.sightings.filter((r) => r.status !== 'voided' && types.has(r.deer_type) && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel));
+    const weight = types.has('weight');
+    const pts = recs.map((r) => { const p = MapKit.deerPos(r); return [p[0], p[1], weight ? r.quantity : 1]; });
+    const max = Math.max(1, ...pts.map((p) => p[2]));
+    if (this.heat) this.map.removeLayer(this.heat);
+    this.heat = L.heatLayer(pts, { radius: 32, blur: 22, maxZoom: 17, max: Math.max(2, max), minOpacity: 0.35 }).addTo(this.map);
+    this.layer.clearLayers();
+    const stands = standsForRecords(activeStands(), recs);
+    stands.forEach((s) => this.layer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
+    if (!this.fitted) { MapKit.fit(this.map, standSel ? stands.filter((s) => s.id === standSel) : stands); this.fitted = true; }
+    const deer = recs.reduce((n, r) => n + r.quantity, 0);
+    $('#hmCount').textContent = recs.length + ' sighting report(s), ' + deer + ' deer reported in total.';
+    if (!navigator.onLine) MapKit.note($('#hmNote'), 'Offline: using records saved on this phone.');
+  }
+};
+
+// ======================================================= Hunt Replay
+const Replay = {
+  map: null, standLayer: null, evLayer: null, fxLayer: null,
+  data: null, events: [], t0: 0, t1: 0, t: 0, playing: false, raf: null, lastFrame: 0,
+  shown: new Map(), sessions: [],
+  init() {
+    if (this.map) return;
+    this.map = MapKit.create($('#replayMap'), $('#rpNote'));
+    this.standLayer = L.layerGroup().addTo(this.map);
+    this.evLayer = L.layerGroup().addTo(this.map);
+    this.fxLayer = L.layerGroup().addTo(this.map);
+    this.map.on('moveend zoomend resize', () => this.relayoutGunshots());
+    $('#rpSource').onchange = () => this.reload(false);
+    $('#rpDate').onchange = () => this.build(true);
+    $('#rpStand').onchange = () => this.build(true);
+    ['#rpDeer', '#rpGun', '#rpStands'].forEach((id) => $(id).addEventListener('click', () => {
+      const c = $(id); c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      if (id === '#rpStands') this.drawStands(); else this.build(false);
+    }));
+    $('#rpPlay').onclick = () => (this.playing ? this.pause() : this.play());
+    $('#rpRestart').onclick = () => { this.pause(); this.seek(this.t0); };
+    $('#rpNext').onclick = () => this.next();
+    $('#rpScrub').addEventListener('input', () => {
+      const v = +$('#rpScrub').value / 1000;
+      this.seek(this.t0 + v * (this.t1 - this.t0), false);
+    });
+  },
+  show() {
+    this.init();
+    setTimeout(() => { this.map.invalidateSize(); this.reload(false); }, 30);
+  },
+  async reload(keepPosition) {
+    const src = $('#rpSource').value;
+    this.data = src === 'import' ? await importData() : await campData();
+    const allRecs = this.data.sightings.concat(this.data.gunshots);
+    const dates = Array.from(new Set(allRecs.map((r) => C.localDateKey(r.observed_at)))).sort().reverse();
+    const sel = $('#rpDate');
+    const cur = sel.value;
+    sel.innerHTML = dates.length ? dates.map((d) => '<option value="' + d + '">' + fmtDateKey(d) + '</option>').join('') : '<option value="">No records yet</option>';
+    if (cur && dates.includes(cur)) sel.value = cur;
+    else if (dates.includes(todayKey())) sel.value = todayKey();
+    const stands = standsForRecords(src === 'import' ? this.data.stands : this.data.stands.filter((s) => s.is_active !== false), allRecs);
+    this.allStands = stands;
+    fillStandSelect($('#rpStand'), stands, true);
+    if (src === 'import' && !allRecs.length) MapKit.note($('#rpNote'), 'No imported hunts yet. Use Settings → Import hunt JSON.');
+    else MapKit.note($('#rpNote'), '');
+    this.build(!keepPosition);
+  },
+  nameOfHunter(id) {
+    const h = (this.data.hunters || []).find((x) => x.id === id);
+    return h ? h.display_name : hunterName(id);
+  },
+  nameOfStand(id) {
+    const s = (this.allStands || []).find((x) => x.id === id);
+    return s ? s.name : standName(id);
+  },
+  build(resetTime) {
+    this.pause();
+    const date = $('#rpDate').value;
+    const standSel = $('#rpStand').value;
+    const showDeer = $('#rpDeer').getAttribute('aria-pressed') === 'true';
+    const showGun = $('#rpGun').getAttribute('aria-pressed') === 'true';
+    const inDate = (iso) => date && C.localDateKey(iso) === date;
+    const keep = (r) => r.status !== 'voided' && inDate(r.observed_at) && (!standSel || r.stand_id === standSel);
+    this.events = C.timeline(showDeer ? this.data.sightings.filter(keep) : [], showGun ? this.data.gunshots.filter(keep) : []);
+    this.sessions = this.data.sessions.filter((s) => inDate(s.started_at) && (!standSel || s.stand_id === standSel));
+    const times = this.events.map((e) => e.t);
+    if (times.length) {
+      this.t0 = Math.min(...times) - 60000;
+      this.t1 = Math.max(...times) + 60000;
+    } else if (date) {
+      const b = C.localDayBounds(date); this.t0 = b.start; this.t1 = b.end;
+    } else { this.t0 = this.t1 = Date.now(); }
+    this.evLayer.clearLayers(); this.fxLayer.clearLayers(); this.shown.clear(); this.lastCurrent = null;
+    this.drawStands();
+    const fitStands = standSel ? this.allStands.filter((s) => s.id === standSel) : this.allStands;
+    MapKit.fit(this.map, fitStands, this.events.filter((e) => e.kind === 'deer').map((e) => MapKit.deerPos(e.rec)));
+    this.renderList();
+    const nSessions = this.sessions.length;
+    $('#rpInfo').textContent = this.events.length
+      ? this.events.length + ' event(s) on this day from ' + new Set(this.events.map((e) => e.rec.stand_id)).size + ' stand(s)' + (nSessions ? ', ' + nSessions + ' hunt session(s)' : '') + '. Events appear at the time they were reported.'
+      : 'No deer sightings or gunshots for this selection.';
+    this.seek(resetTime || this.t < this.t0 || this.t > this.t1 ? this.t0 : this.t, false);
+  },
+  drawStands() {
+    this.standLayer.clearLayers();
+    if ($('#rpStands').getAttribute('aria-pressed') !== 'true') return;
+    const standSel = $('#rpStand').value;
+    (this.allStands || []).forEach((s) => this.standLayer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
+  },
+  renderList() {
+    const list = $('#rpList');
+    list.innerHTML = this.events.map((e, i) => {
+      const r = e.rec;
+      const what = e.kind === 'deer' ? esc(describe(r, 'deer')) : '<b style="color:var(--red)">Gunshot heard</b> — from ' + r.direction;
+      return '<button class="rp-ev ' + (e.kind === 'gunshot' ? 'gun' : '') + '" data-i="' + i + '"><b>' + fmtTime(r.observed_at) + '</b> — ' +
+        esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) + '<br>' + what + '</button>';
+    }).join('');
+    $$('.rp-ev', list).forEach((b) => b.onclick = () => {
+      const ev = this.events[+b.dataset.i];
+      this.pause();
+      this.seek(ev.t, false);
+      if (ev.kind === 'gunshot') this.bang(ev);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  },
+  play() {
+    if (!this.events.length) { toast('Nothing to replay for this selection'); return; }
+    if (this.t >= this.t1) this.seek(this.t0, false);
+    const mapEl = $('#replayMap');
+    if (mapEl.getBoundingClientRect().top < 40) mapEl.scrollIntoView({ block: 'start' });
+    this.playing = true;
+    $('#rpPlay').textContent = '❚❚ PAUSE';
+    this.lastFrame = performance.now();
+    const tick = (now) => {
+      if (!this.playing) return;
+      const dt = Math.min(now - this.lastFrame, 250);
+      this.lastFrame = now;
+      const speed = +$('#rpSpeed').value || 1;
+      const nt = Math.min(this.t1, this.t + dt * speed);
+      this.seek(nt, true);
+      if (nt >= this.t1) { this.pause(); return; }
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+  pause() {
+    this.playing = false;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = null;
+    if ($('#rpPlay')) $('#rpPlay').textContent = '▶ PLAY';
+  },
+  next() {
+    const ev = this.events.find((e) => e.t > this.t + 1);
+    if (!ev) { toast('No more events'); return; }
+    this.seek(ev.t, true);
+  },
+  /** Show the state of the hunt at time t. With animate, events crossed fire their effects. */
+  seek(t, animate) {
+    const prev = this.t;
+    this.t = Math.max(this.t0, Math.min(this.t1, t));
+    const span = this.t1 - this.t0;
+    $('#rpScrub').value = span > 0 ? Math.round((this.t - this.t0) / span * 1000) : 0;
+    $('#rpClock').textContent = this.events.length || span ? fmtTimeSec(this.t) : '--:--';
+    let lastDeerId = null, lastGunId = null, current = -1;
+    this.events.forEach((e, i) => {
+      const visible = e.t <= this.t;
+      const has = this.shown.has(e.rec.id);
+      if (visible && !has) this.addEvent(e);
+      if (!visible && has) this.removeEvent(e);
+      if (visible) current = i;
+      if (visible && e.kind === 'deer') lastDeerId = e.rec.id;
+      if (visible && e.kind === 'gunshot') lastGunId = e.rec.id;
+      if (animate && visible && e.t > prev && e.kind === 'gunshot') this.bang(e);
+    });
+    // Emphasize the most recent deer and gunshot (touch the DOM only when state changes).
+    this.shown.forEach((v, id) => {
+      if (v.kind === 'deer') {
+        const latest = id === lastDeerId;
+        const el = v.marker.getElement && v.marker.getElement();
+        if (el && el.firstChild && v.latest !== latest) { el.firstChild.classList.toggle('latest', latest); v.latest = latest; }
+      } else {
+        const recent = id === lastGunId;
+        if (v.recent !== recent) { v.alert.setIcon(MapKit.gunAlertIcon(recent ? '' : 'old small')); v.recent = recent; }
+      }
+    });
+    if (this.lastCurrent !== current) {
+      const ce = this.events[current];
+      $('#rpNow').innerHTML = ce ? '<b>' + fmtTime(ce.rec.observed_at) + '</b> — ' + esc(this.nameOfHunter(ce.rec.hunter_id)) + ' — ' + esc(this.nameOfStand(ce.rec.stand_id)) + ': ' +
+        (ce.kind === 'deer' ? esc(describe(ce.rec, 'deer')) : '<b style="color:var(--red)">Gunshot heard</b> from ' + ce.rec.direction) : '';
+      $$('#rpList .rp-ev').forEach((b) => {
+        const i = +b.dataset.i;
+        b.classList.toggle('future', i > current);
+        b.classList.toggle('current', i === current);
+      });
+      this.lastCurrent = current;
+    }
+  },
+  addEvent(e) {
+    const r = e.rec;
+    if (e.kind === 'deer') {
+      const parts = [];
+      const arrow = MapKit.travelArrow(r);
+      if (arrow) { this.evLayer.addLayer(arrow); parts.push(arrow); }
+      const popup = '<b>' + esc(C.deerLabel(r.quantity, r.deer_type)) + '</b> — ' + fmtTime(r.observed_at) + '<br>' + esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) +
+        '<br>First seen ' + r.first_seen_direction + ', ' + (C.distanceRange(r.distance_range) || {}).label + '<br>' + (r.heading_direction ? 'Headed ' + r.heading_direction : 'Heading not sure');
+      const m = MapKit.deerMarker(r, false).bindPopup(popup);
+      this.evLayer.addLayer(m); parts.push(m);
+      this.shown.set(r.id, { kind: 'deer', layers: parts, marker: m });
+    } else {
+      const line = L.layerGroup();
+      const alert = L.marker([r.stand_latitude, r.stand_longitude], { icon: MapKit.gunAlertIcon(''), zIndexOffset: 1200 })
+        .bindPopup('<b>Gunshot heard</b> from the ' + r.direction + ' at ' + fmtTime(r.observed_at) + '<br>' + esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) + '<br><i>The arrow shows direction only, not where the shot was.</i>');
+      this.evLayer.addLayer(line); this.evLayer.addLayer(alert);
+      const v = { kind: 'gunshot', layers: [line, alert], line, alert, rec: r, recent: true };
+      this.shown.set(r.id, v);
+      this.layoutGunshot(v);
+    }
+  },
+  removeEvent(e) {
+    const v = this.shown.get(e.rec.id);
+    if (!v) return;
+    v.layers.forEach((l) => this.evLayer.removeLayer(l));
+    this.shown.delete(e.rec.id);
+  },
+  /** Endpoint of the dashed gunshot arrow: toward the visible edge of the map. */
+  gunEnd(r) {
+    const map = this.map, size = map.getSize();
+    const p = map.latLngToContainerPoint([r.stand_latitude, r.stand_longitude]);
+    const ray = C.rayToRectEdge(p.x, p.y, r.bearing, size.x, size.y, 46);
+    if (ray && ray.length > 60) return { latlng: map.containerPointToLatLng([ray.x, ray.y]), px: ray, start: p };
+    // Fallback: stand off-screen or at the edge — draw a fixed 800 m arrow.
+    const d = C.destinationPoint(r.stand_latitude, r.stand_longitude, r.bearing, 800);
+    const ll = L.latLng(d.lat, d.lng);
+    return { latlng: ll, px: map.latLngToContainerPoint(ll), start: p };
+  },
+  layoutGunshot(v) {
+    const r = v.rec, map = this.map;
+    const end = this.gunEnd(r);
+    v.end = end.latlng;
+    v.line.clearLayers();
+    const dirX = Math.sin(r.bearing * Math.PI / 180), dirY = -Math.cos(r.bearing * Math.PI / 180);
+    const hx = end.px.x - dirX * 18, hy = end.px.y - dirY * 18;
+    const left = map.containerPointToLatLng([hx - dirY * 10, hy + dirX * 10]);
+    const right = map.containerPointToLatLng([hx + dirY * 10, hy - dirX * 10]);
+    const start = [r.stand_latitude, r.stand_longitude];
+    v.line.addLayer(L.polyline([start, end.latlng], { color: '#000', weight: 7, opacity: .45, dashArray: '12 9', interactive: false }));
+    v.line.addLayer(L.polyline([start, end.latlng], { color: '#ff2a1a', weight: 4, dashArray: '12 9', interactive: false }));
+    v.line.addLayer(L.polyline([left, end.latlng, right], { color: '#ff2a1a', weight: 5, interactive: false }));
+  },
+  relayoutGunshots() { this.shown.forEach((v) => { if (v.kind === 'gunshot') this.layoutGunshot(v); }); },
+  bang(e) {
+    const v = this.shown.get(e.rec.id);
+    let end = v ? v.end : this.gunEnd(e.rec).latlng;
+    // keep the whole BANG! label inside the visible map
+    const size = this.map.getSize(), p = this.map.latLngToContainerPoint(end);
+    const cx = Math.max(80, Math.min(size.x - 80, p.x)), cy = Math.max(40, Math.min(size.y - 40, p.y));
+    if (cx !== p.x || cy !== p.y) end = this.map.containerPointToLatLng([cx, cy]);
+    const m = L.marker(end, { icon: L.divIcon({ className: '', html: '<div style="position:relative;display:inline-block"><div class="bang">BANG!</div></div>', iconSize: [110, 44], iconAnchor: [55, 22] }), interactive: false, zIndexOffset: 2000 });
+    this.fxLayer.addLayer(m);
+    if (v) { const el = v.alert.getElement(); if (el && el.firstChild) { el.firstChild.classList.remove('pulse'); void el.offsetWidth; el.firstChild.classList.add('pulse'); } }
+    setTimeout(() => this.fxLayer.removeLayer(m), 2700);
+  }
+};
+
+// ======================================================= Camp activity feed
+async function renderActivity() {
+  const range = Array.from(chipSet($('#actRange')))[0] || 'today';
+  const tf = timeFilter(range);
+  const d = await campData();
+  const ev = C.timeline(d.sightings.filter((r) => tf(Date.parse(r.observed_at))), d.gunshots.filter((r) => tf(Date.parse(r.observed_at))));
+  const off = $('#actOffline');
+  if (!isCloudId()) { off.textContent = 'Phone-only mode: only records from this phone are shown.'; off.classList.remove('hidden'); }
+  else if (!navigator.onLine) { off.textContent = 'Offline: other hunters’ records that have not synced yet will not appear here.'; off.classList.remove('hidden'); }
+  else off.classList.add('hidden');
+  const list = $('#actList');
+  if (!ev.length) { list.innerHTML = '<p class="card">No deer sightings or gunshots for this time.</p>'; return; }
+  const days = new Map();
+  ev.forEach((e) => { const k = C.localDateKey(e.rec.observed_at); if (!days.has(k)) days.set(k, []); days.get(k).push(e); });
+  const keys = Array.from(days.keys()).sort().reverse();
+  list.innerHTML = keys.map((k) => '<div class="feed-day">' + fmtDateKey(k) + '</div>' + days.get(k).map((e) => {
+    const r = e.rec, gun = e.kind === 'gunshot';
+    const [cls, label] = syncLabel(r);
+    const mine = S.identity && r.hunter_id === S.identity.hunter_id;
+    const what = gun ? 'Gunshot Heard — ' + r.direction
+      : esc(C.deerLabel(r.quantity, r.deer_type)) + ' — First Seen ' + r.first_seen_direction + ' — ' + (r.heading_direction ? 'Headed ' + r.heading_direction : 'Heading not sure');
+    return '<div class="feed-item' + (gun ? ' gun' : '') + (r.status === 'voided' ? ' voided' : '') + '">' +
+      '<div class="when">' + fmtTime(r.observed_at) + ' — ' + esc(hunterName(r.hunter_id)) + ' — ' + esc(standName(r.stand_id)) + '</div>' +
+      '<div class="what">' + what + (gun ? '' : ' <span class="small muted">(' + (C.distanceRange(r.distance_range) || {}).label + ')</span>') + '</div>' +
+      '<div class="meta"><span>' + (r.status === 'voided' ? '<span class="tag voided">VOIDED' + (r.void_reason ? ': ' + esc(r.void_reason) : '') + '</span> ' : '') +
+      (mine || r._sync !== 'synced' ? '<span class="tag ' + cls + '">' + label + '</span>' : '') + (r.corrects_id ? ' <span class="tag">Correction</span>' : '') + '</span>' +
+      (mine && r.status !== 'voided' ? '<button class="btn btn-inline" data-fix="' + (gun ? 'gunshot_reports' : 'deer_sightings') + ':' + r.id + '">FIX</button>' : '') +
+      '</div></div>';
+  }).join('')).join('');
+  $$('button[data-fix]', list).forEach((b) => b.onclick = () => { const [t, id] = b.dataset.fix.split(':'); correctFlow(t, id); });
+}
+
+// ======================================================= Settings
+async function renderSettings() {
+  const id = S.identity;
+  $('#setWho').innerHTML = id ? 'Hunter: <b>' + esc(id.display_name) + '</b>' + (id.email ? '<br><span class="small">' + esc(id.email) + '</span>' : '') +
+    '<br><span class="small">' + (id.mode === 'cloud' ? (id.is_admin ? 'Camp administrator · ' : '') + 'Shared with the camp' : 'Phone-only mode (not shared)') + '</span>' : '';
+  $('#setBigText').checked = document.documentElement.classList.contains('text-xl');
+  renderSettingsSync();
+  // export
+  const sessions = (await DB.all('sessions')).sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, 60);
+  $('#exSession').innerHTML = sessions.length ? sessions.map((s) => '<option value="' + s.id + '">' + fmtDay(s.started_at) + ' ' + fmtTime(s.started_at) + ' — ' + esc(hunterName(s.hunter_id)) + ' — ' + esc(standName(s.stand_id)) + '</option>').join('') : '<option value="">No hunts yet</option>';
+  if (!$('#exDate').value) $('#exDate').value = todayKey();
+  if (!$('#exFrom').value) $('#exFrom').value = C.localDateKey(new Date(Date.now() - 7 * 86400000).toISOString());
+  if (!$('#exTo').value) $('#exTo').value = todayKey();
+  $('#exShare').classList.toggle('hidden', !(navigator.canShare && window.File));
+  renderImportInfo();
+  // stands
+  const canStands = !isCloudId() || (id && id.is_admin);
+  $('#setStandsNote').textContent = isCloudId() ? (canStands ? 'Changes need an internet connection.' : 'Only the camp administrator can change stands.') : 'Stands on this phone.';
+  $('#setAddStand').classList.toggle('hidden', !canStands);
+  $('#setStandList').innerHTML = S.stands.length ? S.stands.map((s) => '<div class="feed-item" style="border-left-color:var(--orange)"><div class="when">' + esc(s.name) + (s.is_active === false ? ' <span class="tag">Inactive</span>' : '') + '</div>' +
+    '<div class="small">' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? ' — ' + esc(s.description) : '') + '</div>' +
+    (canStands ? '<div class="meta"><span></span><button class="btn btn-inline" data-stand="' + s.id + '">EDIT</button></div>' : '') + '</div>').join('') : '<p class="muted">No stands yet.</p>';
+  $$('button[data-stand]', $('#setStandList')).forEach((b) => b.onclick = () => editStand(b.dataset.stand));
+  // hunters (admin)
+  const showHunters = isCloudId() && id && id.is_admin;
+  $('#setHuntersCard').classList.toggle('hidden', !showHunters);
+  if (showHunters) renderHunterAdmin();
+  // connection
+  const cfg = getConfig();
+  $('#cfgUrl').value = cfg.supabaseUrl; $('#cfgKey').value = cfg.supabaseKey;
+  // about
+  let persisted = 'unknown';
+  try { if (navigator.storage && navigator.storage.persisted) persisted = (await navigator.storage.persisted()) ? 'yes' : 'no'; } catch (_) {}
+  const swState = navigator.serviceWorker && navigator.serviceWorker.controller ? 'ready for offline use' : 'not yet ready for offline use (open once with internet, then reload)';
+  $('#setAbout').innerHTML = 'Deer Camp version ' + C.APP_VERSION + '<br>App files: ' + swState + '<br>Storage protected from automatic cleanup: ' + persisted;
+}
+
+async function renderSettingsSync() {
+  const last = await DB.getMeta('lastSyncAt');
+  const out = await DB.all('outbox');
+  const me = S.identity && S.identity.hunter_id;
+  let txt;
+  if (!isCloudId()) txt = 'Phone-only mode — records are saved on this phone only.';
+  else txt = (S.pendingMine ? S.pendingMine + ' record(s) waiting to upload.' : 'Everything from this phone is uploaded.') +
+    (last ? ' Last sync: ' + fmtDay(last) + ' ' + fmtTime(last) + '.' : '') + (Sync.authNeeded ? ' Please sign in again to upload.' : '') + (Sync.lastError ? ' Last problem: ' + Sync.lastError : '');
+  if (S.pendingOther) txt += ' ' + S.pendingOther + ' record(s) on this phone belong to another hunter and will upload when they sign in here.';
+  $('#setSync').textContent = txt;
+  $('#setSyncNow').classList.toggle('hidden', !isCloudId());
+  const errs = out.filter((o) => o.hunter_id === me && o.last_error).slice(0, 5);
+  $('#setSyncErrors').innerHTML = errs.map((o) => '<p class="err">' + esc(o.table.replace('_', ' ')) + ': ' + esc(o.last_error) + ' (tries: ' + o.attempts + ')</p>').join('');
+}
+
+async function editStand(id) {
+  const s = id ? standById(id) : null;
+  return Dialog.form(s ? 'Edit stand' : 'Add stand',
+    '<label class="field">Stand name<input name="name" maxlength="60" required value="' + esc(s ? s.name : '') + '"></label>' +
+    '<p class="small muted">Tip: you can paste "latitude, longitude" (for example from Google Maps) into the Latitude box.</p><label class="field">Latitude<input name="lat" inputmode="decimal" required value="' + (s ? s.latitude : '') + '" placeholder="38.12345"></label>' +
+    '<label class="field">Longitude<input name="lng" inputmode="decimal" value="' + (s ? s.longitude : '') + '" placeholder="-90.12345"></label>' +
+    '<button class="btn" type="button" id="useGps">📍 USE MY CURRENT LOCATION</button>' +
+    '<label class="field">Description (optional)<input name="desc" maxlength="500" value="' + esc(s && s.description ? s.description : '') + '"></label>' +
+    '<div class="check"><input type="checkbox" name="active" id="stActive" ' + (!s || s.is_active !== false ? 'checked' : '') + '><label for="stActive">Active (shown to hunters)</label></div>',
+    'SAVE STAND', (f, err) => saveStandForm(f, err, s));
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target && ev.target.id === 'useGps') {
+    const f = $('#dlgForm');
+    if (!navigator.geolocation) { toast('GPS not available'); return; }
+    ev.target.textContent = 'Finding location…';
+    navigator.geolocation.getCurrentPosition((p) => {
+      f.lat.value = p.coords.latitude.toFixed(6); f.lng.value = p.coords.longitude.toFixed(6);
+      ev.target.textContent = '📍 Location set (±' + Math.round(p.coords.accuracy) + ' m)';
+    }, (e) => { ev.target.textContent = '📍 USE MY CURRENT LOCATION'; toast('Could not get location: ' + e.message, 5000); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  }
+});
+async function saveStandForm(f, err, s) {
+  let latTxt = f.lat.value.trim(), lngTxt = f.lng.value.trim();
+  if (latTxt.includes(',') && !lngTxt) { [latTxt, lngTxt] = latTxt.split(',').map((x) => x.trim()); }
+  const rec = {
+    id: s ? s.id : C.uuid(), name: f.name.value.trim(), latitude: parseFloat(latTxt), longitude: parseFloat(lngTxt),
+    description: f.desc.value.trim() || null, is_active: f.active.checked
+  };
+  const errs = C.validateStand(rec);
+  if (errs.length) { err(errs.join('. ')); return false; }
+  if (isCloudId()) {
+    if (!navigator.onLine) { err('Changing stands needs an internet connection.'); return false; }
+    const q = s ? Cloud.sb.from('stands').update({ name: rec.name, latitude: rec.latitude, longitude: rec.longitude, description: rec.description, is_active: rec.is_active }).eq('id', rec.id).select()
+      : Cloud.sb.from('stands').insert(rec).select();
+    const { data, error } = await q;
+    if (error || !data || !data.length) { err('Not saved: ' + (error ? error.message : 'no permission')); return false; }
+    await DB.put('stands', data[0]);
+  } else {
+    await DB.put('stands', Object.assign({}, s || {}, rec));
+  }
+  await loadCatalog();
+  toast('Stand saved');
+  renderSettings();
+  return true;
+}
+
+async function renderHunterAdmin() {
+  const list = $('#setHunterList');
+  if (!navigator.onLine) { list.innerHTML = '<p class="muted">Connect to the internet to manage hunters.</p>'; return; }
+  const { data, error } = await Cloud.sb.from('profiles').select('id,display_name,is_admin,is_active').order('display_name');
+  if (error) { list.innerHTML = '<p class="err">' + esc(error.message) + '</p>'; return; }
+  const pending = data.filter((p) => !p.is_active);
+  list.innerHTML = data.sort((a, b) => (a.is_active - b.is_active) || a.display_name.localeCompare(b.display_name)).map((p) =>
+    '<div class="feed-item" style="border-left-color:' + (p.is_active ? 'var(--green)' : 'var(--orange)') + '"><div class="when">' + esc(p.display_name) +
+    (p.is_admin ? ' <span class="tag">Admin</span>' : '') + (p.is_active ? '' : ' <span class="tag pending">Not active</span>') + '</div>' +
+    '<div class="btn-row" style="margin-top:6px"><button class="btn btn-inline" data-h="rename" data-id="' + p.id + '">RENAME</button>' +
+    '<button class="btn btn-inline ' + (p.is_active ? '' : 'btn-primary') + '" data-h="active" data-id="' + p.id + '">' + (p.is_active ? 'DEACTIVATE' : 'ACTIVATE') + '</button>' +
+    '<button class="btn btn-inline" data-h="admin" data-id="' + p.id + '">' + (p.is_admin ? 'REMOVE ADMIN' : 'MAKE ADMIN') + '</button></div></div>').join('') +
+    (pending.length ? '<p class="small muted">Not active = signed up but cannot see or record anything until you activate them.</p>' : '');
+  $$('button[data-h]', list).forEach((b) => b.onclick = async () => {
+    const p = data.find((x) => x.id === b.dataset.id);
+    let patch;
+    if (b.dataset.h === 'rename') {
+      const ok = await Dialog.form('Rename hunter', '<label class="field">Display name<input name="n" maxlength="60" required value="' + esc(p.display_name) + '"></label>', 'SAVE',
+        (f) => { patch = { display_name: f.n.value.trim() }; return !!patch.display_name; });
+      if (!ok) return;
+    } else if (b.dataset.h === 'active') {
+      if (p.is_active && !(await Dialog.confirm('Deactivate ' + p.display_name + '?', 'They will no longer be able to see or record. Their past records are kept.', 'DEACTIVATE', 'CANCEL', true))) return;
+      patch = { is_active: !p.is_active };
+    } else patch = { is_admin: !p.is_admin };
+    const { error: e2 } = await Cloud.sb.from('profiles').update(patch).eq('id', p.id);
+    if (e2) toast('Not saved: ' + e2.message, 6000); else toast('Saved');
+    renderHunterAdmin();
+  });
+  const inv = await Cloud.sb.from('hunter_invites').select('*').order('created_at', { ascending: false });
+  $('#invList').innerHTML = inv.error ? '' : (inv.data.length ? '<p><b>Added by email:</b></p>' + inv.data.map((i) => '<p>' + esc(i.display_name) + ' — ' + esc(i.email) + (i.is_admin ? ' (admin)' : '') +
+    ' <button class="btn-link" data-inv="' + esc(i.email) + '">remove</button></p>').join('') : '');
+  $$('button[data-inv]', $('#invList')).forEach((b) => b.onclick = async () => {
+    await Cloud.sb.from('hunter_invites').delete().eq('email', b.dataset.inv); renderHunterAdmin();
+  });
+}
+
+async function addInvite() {
+  const name = $('#invName').value.trim(), email = $('#invEmail').value.trim().toLowerCase();
+  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Enter a name and a valid email'); return; }
+  const { error } = await Cloud.sb.from('hunter_invites').upsert({ email, display_name: name, is_admin: $('#invAdmin').checked, created_by: S.identity.hunter_id });
+  if (error) { toast('Not saved: ' + error.message, 6000); return; }
+  // (If that email already has an account, the database activates it now.)
+  $('#invName').value = ''; $('#invEmail').value = ''; $('#invAdmin').checked = false;
+  toast('Hunter added. They can now create their account with ' + email, 5000);
+  renderHunterAdmin();
+}
+
+// ======================================================= Export / Import
+function exportFilter() {
+  const scope = Array.from(chipSet($('#exScope')))[0] || 'date';
+  if (scope === 'session') return { type: 'session', session_id: $('#exSession').value };
+  if (scope === 'date') return { type: 'date', date: $('#exDate').value || todayKey() };
+  if (scope === 'range') {
+    let a = $('#exFrom').value, b = $('#exTo').value;
+    if (a > b) [a, b] = [b, a];
+    return { type: 'range', from: a, to: b };
+  }
+  return { type: 'all' };
+}
+async function buildExportFile() {
+  const f = exportFilter();
+  if (f.type === 'session' && !f.session_id) throw new Error('No hunt selected');
+  const obj = C.buildExport(await campData(), f);
+  const name = 'deer-camp-' + (f.type === 'date' ? f.date : f.type === 'range' ? f.from + '_to_' + f.to : f.type === 'session' ? 'hunt-' + f.session_id.slice(0, 8) : 'all-' + todayKey()) + '.json';
+  return { obj, name, text: JSON.stringify(obj, null, 2) };
+}
+async function doExport(share) {
+  try {
+    const { obj, name, text } = await buildExportFile();
+    const blob = new Blob([text], { type: 'application/json' });
+    if (share) {
+      const file = new File([blob], name, { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    $('#exInfo').textContent = 'Saved ' + name + ': ' + obj.sessions.length + ' hunt(s), ' + obj.deer_sightings.length + ' deer sighting(s), ' + obj.gunshot_reports.length + ' gunshot report(s).';
+  } catch (e) { if (e.name !== 'AbortError') toast('Export failed: ' + e.message, 6000); }
+}
+async function doImport(file) {
+  const info = $('#imInfo');
+  info.textContent = 'Checking file…';
+  let obj;
+  try { obj = JSON.parse(await file.text()); } catch (e) { info.innerHTML = '<span class="err">This file is not valid JSON.</span>'; return; }
+  const v = C.validateImport(obj);
+  if (!v.ok) { info.innerHTML = '<span class="err">Not imported: ' + esc(v.errors.join('; ')) + '</span>'; return; }
+  const existing = new Set((await DB.all('imports')).map((r) => r.key));
+  let added = 0, dup = 0;
+  const kinds = { stands: 'stands', hunters: 'hunters', sessions: 'sessions', sightings: 'sightings', gunshots: 'gunshots' };
+  const rows = [];
+  Object.keys(kinds).forEach((k) => v.data[k].forEach((rec) => {
+    const key = k + ':' + rec.id;
+    const isEvent = k === 'sightings' || k === 'gunshots';
+    if (existing.has(key)) { if (isEvent) dup++; if (isEvent) return; }
+    if (isEvent) added++;
+    rows.push({ key, kind: k, rec: Object.assign({}, rec, { _sync: 'imported' }), file: file.name });
+  }));
+  await DB.write(['imports'], (t) => { const os = t.objectStore('imports'); rows.forEach((r) => os.put(r)); });
+  const files = (await DB.getMeta('importFiles', [])).concat([{ name: file.name, at: new Date().toISOString(), added, dup, skipped: v.skipped.length }]);
+  await DB.setMeta('importFiles', files);
+  info.innerHTML = 'Imported <b>' + esc(file.name) + '</b>: ' + added + ' new event(s)' + (dup ? ', ' + dup + ' already imported (skipped)' : '') +
+    (v.skipped.length ? '. <span class="err">' + v.skipped.length + ' invalid record(s) skipped: ' + esc(v.skipped.slice(0, 3).join('; ')) + '</span>' : '') +
+    '. <button class="btn-link" id="imGoReplay">Open in Hunt Replay</button>';
+  $('#imGoReplay').onclick = () => { $('#rpSource').value = 'import'; show('replay'); };
+  $('#imClear').classList.remove('hidden');
+}
+async function renderImportInfo() {
+  const n = await DB.count('imports');
+  $('#imClear').classList.toggle('hidden', !n);
+  if (!$('#imInfo').innerHTML) {
+    const files = await DB.getMeta('importFiles', []);
+    $('#imInfo').textContent = files.length ? files.length + ' file(s) imported so far.' : '';
+  }
+}
+
+// ======================================================= Service worker & updates
+function registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const offer = (w) => {
+      const b = document.createElement('div');
+      b.className = 'banner update';
+      b.innerHTML = 'A new version of Deer Camp is ready. <button class="btn btn-inline" id="updBtn">UPDATE NOW</button>';
+      $('#banners').innerHTML = ''; $('#banners').appendChild(b);
+      $('#updBtn').onclick = () => {
+        if ($('#wizard').classList.contains('open') || $('#gunshot').classList.contains('open')) { toast('Finish your entry first'); return; }
+        S.updateRequested = true;
+        w.postMessage({ type: 'SKIP_WAITING' });
+      };
+    };
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      if (!w) return;
+      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w); });
+    });
+    setInterval(() => { if (navigator.onLine) reg.update().catch(() => {}); }, 30 * 60000);
+  }).catch((e) => console.warn('Service worker registration failed', e));
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading && S.updateRequested) { reloading = true; location.reload(); } });
+}
+
+// ======================================================= Wire up UI
+function bind() {
+  $('#menuBtn').onclick = openMenu;
+  $('#menuClose').onclick = closeMenu;
+  $('#menu').addEventListener('click', (e) => { if (e.target === $('#menu')) closeMenu(); });
+  $$('#menu [data-go]').forEach((b) => b.onclick = () => show(b.dataset.go));
+  $('#syncStatus').onclick = () => {
+    if (!isCloudId()) { toast('Sharing is not set up. Records are saved on this phone.'); return; }
+    if (Sync.authNeeded) { show('signin'); return; }
+    if (!navigator.onLine) { toast('No service right now. Records are safe on this phone.'); return; }
+    Sync.retryDelay = 0;
+    Sync.run('manual');
+  };
+  $('#signinForm').onsubmit = onSignInSubmit;
+  $('#siToggle').onclick = () => setSignUpMode(!signUpMode);
+  $('#siRecheck').onclick = async () => {
+    try { const s = await Cloud.session(); if (s) { if (!(await completeSignIn(s.user))) toast('Not approved yet'); } else { $('#siPending').classList.add('hidden'); $('#signinForm').parentElement.classList.remove('hidden'); } }
+    catch (e) { toast('No connection: ' + e.message); }
+  };
+  $('#siSignOut2').onclick = async () => { try { await Cloud.sb.auth.signOut({ scope: 'local' }); } catch (_) {} $('#siPending').classList.add('hidden'); $('#signinForm').parentElement.classList.remove('hidden'); };
+  $('#addLocalHunter').onclick = addLocalHunter;
+  $('#standCancel').onclick = () => show('home');
+  $('#changeStand').onclick = () => show('stand');
+  $('#huntToggle').onclick = async () => {
+    if (S.session) { if (await Dialog.confirm('End your hunt?', 'Your sightings and gunshot reports are kept.', 'END HUNT', 'KEEP HUNTING')) endHunt(); }
+    else startHunt();
+  };
+  $('#logDeerBtn').onclick = () => { if (!standById(S.standId)) { show('stand'); return; } openWizard(); };
+  $('#gunshotBtn').onclick = openGunshot;
+  $('#wzBack').onclick = () => { if (WZ.st && WZ.st.step > 1) { WZ.st.step--; renderWizard(); } };
+  $('#wzCancel').onclick = async () => {
+    if (WZ.st && WZ.st.step > 1 && !(await Dialog.confirm('Cancel this sighting?', 'Nothing will be saved.', 'YES, CANCEL', 'NO, GO BACK', true))) return;
+    if (WZ.st && WZ.st.corrects_id) toast('Correction cancelled. The original stays voided — record it again if needed.', 6000);
+    closeWizard();
+  };
+  $('#gsCancel').onclick = closeGunshot;
+  $('#cfOk').onclick = closeConfirm;
+  $('#lastRecUndo').onclick = async () => {
+    if (!S.lastRecord) return;
+    const table = S.lastRecord.store === 'gunshots' ? 'gunshot_reports' : 'deer_sightings';
+    correctFlow(table, S.lastRecord.id);
+  };
+  bindChips($('#actRange'), renderActivity, true);
+  bindChips($('#exScope'), () => {
+    const s = Array.from(chipSet($('#exScope')))[0];
+    $('#exSessionWrap').classList.toggle('hidden', s !== 'session');
+    $('#exDateWrap').classList.toggle('hidden', s !== 'date');
+    $('#exRangeWrap').classList.toggle('hidden', s !== 'range');
+  }, true);
+  $('#exBtn').onclick = () => doExport(false);
+  $('#exShare').onclick = () => doExport(true);
+  $('#imBtn').onclick = () => $('#imFile').click();
+  $('#imFile').onchange = () => { const f = $('#imFile').files[0]; if (f) doImport(f); $('#imFile').value = ''; };
+  $('#imClear').onclick = async () => {
+    if (!(await Dialog.confirm('Remove imported data?', 'This removes imported replay files from this phone only. Camp records are not touched.', 'REMOVE', 'CANCEL', true))) return;
+    await DB.write(['imports'], (t) => t.objectStore('imports').clear());
+    await DB.setMeta('importFiles', []);
+    $('#imInfo').textContent = 'Imported data removed.';
+    renderImportInfo();
+  };
+  $('#setSwitch').onclick = signOutFlow;
+  $('#setSyncNow').onclick = () => Sync.run('manual');
+  $('#setAddStand').onclick = () => editStand(null);
+  $('#invAdd').onclick = addInvite;
+  $('#setBigText').onchange = () => {
+    document.documentElement.classList.toggle('text-xl', $('#setBigText').checked);
+    try { localStorage.setItem('deercamp-bigtext', $('#setBigText').checked ? '1' : '0'); } catch (_) {}
+  };
+  $('#cfgSave').onclick = async () => {
+    const url = $('#cfgUrl').value.trim(), key = $('#cfgKey').value.trim();
+    if (url && !/^https:\/\//.test(url)) { $('#cfgInfo').textContent = 'The URL must start with https://'; return; }
+    if (/service_role|sb_secret_/i.test(key) || (key.split('.').length === 3 && /service_role/.test(atob(key.split('.')[1] || '') || ''))) {
+      $('#cfgInfo').textContent = 'That looks like a SECRET key. Use the publishable (anon) key only.'; return;
+    }
+    await syncCounts();
+    if (S.pendingMine && !(await Dialog.confirm('Change connection?', S.pendingMine + ' record(s) have not uploaded yet. They stay on this phone.', 'CHANGE', 'CANCEL'))) return;
+    try { localStorage.setItem('deercamp-config', JSON.stringify({ supabaseUrl: url, supabaseKey: key })); } catch (_) {}
+    location.reload();
+  };
+  $('#setReload').onclick = () => location.reload();
+
+  window.addEventListener('online', () => { S.online = true; Sync.retryDelay = 0; refreshStatus(); Sync.soon(500); const st = standById(S.standId); if (st) Weather.refresh(st); });
+  window.addEventListener('offline', () => { S.online = false; refreshStatus(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { refreshStatus(); Sync.soon(300); if (S.screen === 'home') renderHome(); }
+  });
+  setInterval(() => { if (navigator.onLine && document.visibilityState === 'visible' && (S.pendingMine || S.screen !== 'home')) Sync.run('interval'); }, 90000);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); } });
+}
+
+// ======================================================= Boot
+async function boot() {
+  try { if (localStorage.getItem('deercamp-bigtext') === '1') document.documentElement.classList.add('text-xl'); } catch (_) {}
+  bind();
+  try {
+    await DB.open();
+  } catch (e) {
+    document.querySelector('main').innerHTML = '<div class="screen active"><div class="card"><h2 class="err">Phone storage is not available</h2><p>' + esc(e.message || e) +
+      '</p><p>Deer Camp needs to save records on this phone. Private/Incognito browsing can block this. Open Deer Camp in a normal browser window.</p></div></div>';
+    return;
+  }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (_) {}
+  Cloud.init();
+  await loadCatalog();
+  S.identity = await DB.getMeta('identity');
+  if (S.identity && S.identity.mode === 'cloud' && !Cloud.enabled()) S.identity = null; // connection removed
+  if (S.identity && S.identity.mode === 'local' && Cloud.enabled()) S.identity = null;  // sharing now set up
+  registerSW();
+  if (S.identity) await afterIdentity();
+  else show(Cloud.enabled() ? 'signin' : 'hunter');
+  refreshStatus();
+  if (isCloudId()) Sync.soon(200); // also refreshes the hunter's name/admin status
+  const st = standById(S.standId);
+  if (st) Weather.refresh(st);
+  window.DeerCampApp = { S, DB, Sync, Cloud, Replay, show, saveLocal };
+}
+boot();
+})();
+</script>
+</body>
+</html>

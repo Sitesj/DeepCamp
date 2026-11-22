@@ -1,0 +1,302 @@
+# Deer Camp
+
+Deer Camp is a phone app for a small hunting group. Each hunter picks their name and stand, then taps big buttons to record **deer sightings** and **gunshots heard**. Records are saved on the phone first and upload to the camp's shared database when there is cell service. Everyone can then see the activity on a satellite map, look at a deer heat map, replay a hunt minute by minute, and download or import the records as JSON.
+
+**Design rule: RECORD FIRST, SYNCHRONIZE SECOND.** A sighting is never lost because there was no signal.
+
+- No property names, property IDs or boundaries. Only **hunters** and **stands** (each stand has GPS coordinates).
+- Works without cell service once it has been opened one time with internet.
+- Plain HTML, CSS and JavaScript, hosted on GitHub Pages. Data is stored in Supabase (PostgreSQL + Auth + Row Level Security).
+
+---
+
+## Contents
+
+1. [Create the Supabase project](#1-create-the-supabase-project)
+2. [Apply the database migration](#2-apply-the-database-migration)
+3. [Configure authentication](#3-configure-authentication)
+4. [Configure the public Supabase connection](#4-configure-the-public-supabase-connection)
+5. [Add hunters](#5-add-hunters)
+6. [Add stands and GPS coordinates](#6-add-stands-and-gps-coordinates)
+7. [Deploy to GitHub Pages](#7-deploy-to-github-pages)
+8. [Install on a phone](#8-install-on-a-phone)
+9. [Test offline recording](#9-test-offline-recording)
+10. [Test synchronization](#10-test-synchronization)
+11. [Export JSON](#11-export-json)
+12. [Import JSON](#12-import-json)
+13. [Use Hunt Replay](#13-use-hunt-replay)
+- [Using Deer Camp in the stand](#using-deer-camp-in-the-stand)
+- [Phone-only mode (no Supabase)](#phone-only-mode-no-supabase)
+- [Project layout](#project-layout)
+- [Automated tests](#automated-tests)
+- [Known limitations](#known-limitations)
+
+---
+
+## 1. Create the Supabase project
+
+1. Go to <https://supabase.com>, sign in, and click **New project**.
+2. Pick a name (for example `deer-camp`), set a strong database password (keep it private, it is **not** used by the app), and pick the region closest to camp.
+3. Wait for the project to finish setting up.
+
+## 2. Apply the database migration
+
+The schema is in [`supabase/migrations/20261122000001_deer_camp_schema.sql`](supabase/migrations/20261122000001_deer_camp_schema.sql). It creates:
+
+| Table | Purpose |
+|---|---|
+| `profiles` | One row per hunter account: display name, administrator flag, active flag |
+| `hunter_invites` | Hunters the administrator has added by e-mail (supporting table) |
+| `stands` | Stand name, latitude, longitude, description, active flag |
+| `hunting_sessions` | Start / end of each hunt (hunter + stand) |
+| `deer_sightings` | Every deer sighting with direction, distance range, heading, quantity, type, weather |
+| `gunshot_reports` | Every gunshot heard with direction and bearing |
+
+It also turns on Row Level Security, adds the policies, check constraints, indexes, triggers and Realtime publication.
+
+**Option A — SQL Editor (easiest):** open your project → **SQL Editor** → **New query**, paste the whole migration file, click **Run**. It should finish with "Success. No rows returned".
+
+**Option B — Supabase CLI:**
+
+```bash
+supabase link --project-ref YOUR-PROJECT-REF
+supabase db push
+```
+
+### What the database enforces
+
+- Only **active** hunters can see anything. A new account that was not added by the administrator gets an *inactive* profile and sees nothing until activated.
+- A hunter can only create sessions, sightings and gunshot reports **as themselves** (`hunter_id` must equal the signed-in user). Changing a name in the app cannot impersonate someone else.
+- Sightings and gunshots can only be attached to the hunter's **own** hunting session.
+- Original observations can never be edited. The only change allowed is **voiding** your own record (with a reason). A voided record cannot be un-voided. Corrections are new records that point back to the voided one (`corrects_id`).
+- Only administrators can add or change stands and hunters. Stands are deactivated, never deleted. The last administrator cannot be removed.
+- Records are uploaded with the UUID made on the phone, so uploading the same record twice never creates a duplicate.
+
+## 3. Configure authentication
+
+In the Supabase dashboard:
+
+1. **Authentication → Sign In / Providers → Email**: make sure Email is enabled.
+2. **Recommended:** turn **off** "Confirm email". Access is already controlled by the administrator's hunter list, and confirmation links open in the phone's browser instead of the installed app, which confuses people. If you leave it on, each hunter must tap the link in the e-mail once, then sign in from the app.
+3. **Authentication → URL Configuration → Site URL**: set it to your GitHub Pages address, for example `https://YOUR-USER.github.io/DeepCamp/`.
+4. Leave the default session settings. Hunters stay signed in on their phone (the app refreshes the session automatically when it has service) and do not need to sign in again during normal use.
+
+**Make yourself the first administrator.** Before you create your account, run this in the **SQL Editor** (use your own e-mail and name):
+
+```sql
+insert into public.hunter_invites (email, display_name, is_admin)
+values ('you@example.com', 'Your Name', true);
+```
+
+Then open the app and tap **First time? Create an account** with that same e-mail. (If you already created the account, running the insert activates it.)
+
+## 4. Configure the public Supabase connection
+
+In **Project Settings → API Keys**, copy:
+
+- the **Project URL** (looks like `https://abcd1234.supabase.co`)
+- the **Publishable key** (`sb_publishable_...`) — or the legacy **anon public** key
+
+Put them in [`config.js`](config.js):
+
+```js
+window.DEER_CAMP_CONFIG = {
+  supabaseUrl: 'https://abcd1234.supabase.co',
+  supabaseKey: 'sb_publishable_xxxxxxxxxxxxxxxx'
+};
+```
+
+These two values are meant to be public: security comes from Row Level Security in the database. **Never** put the `service_role` / secret key in `config.js`, in the app, or in the repository. (The app refuses keys that look like secret keys.)
+
+You can also enter the URL and key on a single phone in **Settings → Connection setup**, which is handy for trying things out before editing `config.js`.
+
+## 5. Add hunters
+
+As an administrator, open **☰ → Settings → Hunters**:
+
+1. Under **Add a hunter**, type the hunter's name and e-mail, then tap **ADD HUNTER**. Tick *Camp administrator* if they should manage stands and hunters too.
+2. Tell the hunter to open Deer Camp, tap **First time? Create an account**, and use that same e-mail and a password of their choice. Their account is active right away with the name you entered.
+
+Also in Settings → Hunters you can **RENAME** a hunter, **DEACTIVATE** them (their past records are kept), **ACTIVATE** someone who signed up without being added, and **MAKE ADMIN / REMOVE ADMIN**.
+
+*Alternative:* you can create the account yourself in the Supabase dashboard (**Authentication → Users → Add user**) after adding the invite, and give the hunter the password.
+
+## 6. Add stands and GPS coordinates
+
+As an administrator, open **☰ → Settings → Stands → ADD STAND** (or **EDIT** on an existing stand):
+
+- **Stand name** — what hunters will see, e.g. "North Ridge".
+- **Latitude / Longitude** in decimal degrees, e.g. `38.12345` and `-90.12345`. You can paste `38.12345, -90.12345` (as copied from Google Maps) into the Latitude box.
+- **📍 USE MY CURRENT LOCATION** fills in the coordinates from the phone's GPS — easiest when you are standing at the stand.
+- **Active** — untick to hide a stand you no longer hunt. Old records keep their location because each record stores the stand's coordinates at the time it was made.
+
+Changing stands needs an internet connection. Every phone picks up the new list the next time it syncs.
+
+## 7. Deploy to GitHub Pages
+
+The repository includes [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). On every push to `main` it runs the unit, database and browser tests, then publishes the site.
+
+1. Merge this work into `main`.
+2. In GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. Push to `main` (or run the workflow from the **Actions** tab). When it finishes, the site is at `https://YOUR-USER.github.io/DeepCamp/`.
+
+The workflow stamps the commit id into `sw.js`, so phones get the new version automatically. They see a green **"A new version of Deer Camp is ready — UPDATE NOW"** bar; the update never interrupts an entry in progress and never touches saved records.
+
+*Deploying from a branch instead* (Settings → Pages → Deploy from a branch → root) also works because all paths are relative. In that case change `VERSION` in `sw.js` by hand for every release, otherwise phones keep the old cached version.
+
+## 8. Install on a phone
+
+Open the site **once with internet** so the app can save itself on the phone.
+
+- **iPhone (Safari):** tap the Share button → **Add to Home Screen** → Add. Always open Deer Camp from the home-screen icon. (Installing also protects the saved records from Safari's automatic cleanup of website data.)
+- **Android (Chrome):** tap ⋮ → **Install app** (or **Add to Home screen**).
+
+Then sign in, choose your stand, and check **☰ → Settings → About this phone**: it should say *App files: ready for offline use*. If it does not, close the app and open it again while you have service.
+
+## 9. Test offline recording
+
+1. With service, open Deer Camp, sign in, choose a stand.
+2. Turn on **Airplane mode**.
+3. Close Deer Camp completely, then open it again from the home-screen icon. It should open normally and show **Offline (no service)**.
+4. Tap **LOG DEER SIGHTING** and go through the steps. You should see **SAVED ON PHONE — WILL SYNC LATER**.
+5. The top bar shows **⏳ Waiting to Sync (1)**. Close and reopen the app: the record is still there (**☰ → Camp Activity**, marked *Waiting to Sync*).
+
+The satellite pictures do not load offline; the maps still show stands and records over a plain background.
+
+## 10. Test synchronization
+
+1. After the offline test, turn Airplane mode **off**.
+2. Within a few seconds the top bar changes to **⟳ Syncing…** and then **✓ Synced**. You can also tap the sync status to sync right away.
+3. On a second phone signed in as another hunter, open **Camp Activity** or **Live Map**: the record appears with the original time it was seen (not the upload time).
+4. In Supabase → **Table Editor → deer_sightings** you can see the row. Syncing again never creates a second copy.
+
+Sync is attempted when the app starts, when service comes back, when the app is brought to the front, every minute or two while it is open, after every new record, and when you tap the status. Failed uploads are retried automatically and shown as **Sync Failed — tap to retry** with the reason in Settings → Sync.
+
+## 11. Export JSON
+
+**☰ → Settings → Download hunt JSON**. Choose:
+
+- **One hunt** (a single hunting session),
+- **One day**,
+- **Date range**, or
+- **Everything**,
+
+then tap **DOWNLOAD HUNT JSON** (or **SHARE HUNT JSON** to send it by text/e-mail on phones that support it).
+
+The file contains the schema version, export time, hunter names, stand names/IDs/coordinates, hunting sessions, deer sightings and gunshot reports with their original UUIDs, timestamps, bearings, distance ranges, quantities, types and weather. Voided records are included and marked `"status": "voided"`. There is no property information. The file contains everything needed to replay the hunt without Supabase.
+
+## 12. Import JSON
+
+**☰ → Settings → IMPORT HUNT JSON**, then pick a Deer Camp JSON file.
+
+- The file is checked first. Files that are not Deer Camp exports are rejected; individual invalid records are skipped and listed.
+- Imported hunts go into a **separate replay list**. They are never uploaded to Supabase and never mixed into the camp records.
+- Importing the same file again adds nothing new (events are matched by their UUID).
+- **REMOVE IMPORTED DATA** clears the imported list from this phone only.
+
+Imported hunts can be replayed offline.
+
+## 13. Use Hunt Replay
+
+**☰ → Hunt Replay**
+
+1. Choose **Camp records** or **Imported files**, the **date**, and **All stands** or one stand.
+2. Tap **▶ PLAY**. The clock runs from just before the first event of the day to just after the last. Choose the speed (1x, 5x, 10x, 30x, 60x, 300x). **NEXT ⏭** jumps to the next event; drag the timeline to move anywhere; **⟲ RESTART** goes back to the start.
+3. **Deer** appear at their *estimated* first-seen location (stand + reported direction + middle of the distance range) with a short arrow showing the direction they were headed. No path is drawn: Deer Camp only knows where a deer was first seen and which way it was going.
+4. **Gunshots** show a big red **!** above the stand that heard it, a dashed red arrow from that stand toward the edge of the map in the direction the sound came from, and a **BANG!** that fades away. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
+5. Tap any event in the list below the map to jump to it. Use **Deer**, **Gunshots** and **Show stands** to hide or show things.
+
+Events always appear at the time the hunter reported them, never the time they were uploaded.
+
+---
+
+## Using Deer Camp in the stand
+
+- **START HUNT** when you get in the stand, **END HUNT** when you leave. (If you forget, logging a sighting starts a hunt automatically.) Hunts with no sightings are kept too — they show how much time was spent hunting.
+- **LOG DEER SIGHTING** (6 steps, the time is taken when you tap the button):
+  1. Tap the circle on the compass where you **first saw** the deer (north is always at the top).
+  2. Tap **how far** away: 0–25, 25–50, 50–75, 75–100 or 100–200 yards.
+  3. Tap the direction the deer was **headed**, or **NOT SURE**.
+  4. **How many**: use − and +.
+  5. **BUCK**, **DOE** or **UNKNOWN**. Saw bucks and does together? Log them as two sightings.
+  6. Check the summary and tap **RECORD SIGHTING**.
+- **GUNSHOT HEARD**: tap it right away (the time is taken then), then tap the compass circle the shot came **from**. That's it.
+- **Mistakes:** tap **UNDO** on the confirmation screen, or **UNDO** under "Your last entry" on the home screen, or **FIX** in Camp Activity. You can re-enter it correctly (the original time is kept) or void it. Nothing is ever erased: the original stays in the history marked *voided*.
+- The top bar always shows **Online/Offline** and the sync status: *Saved on Phone*, *Waiting to Sync*, *Syncing*, *Synced*, *Sync Failed*.
+- **Extra-large text** can be turned on in Settings.
+
+## Phone-only mode (no Supabase)
+
+If `config.js` is left empty, Deer Camp runs on a single phone with no sign-in: add hunter names and stands in the app, record, view the maps, replay, and export JSON. Nothing is shared or uploaded. Records made in phone-only mode stay on that phone (export them as JSON to keep them) and are not uploaded if a Supabase connection is set up later.
+
+## Project layout
+
+```
+index.html                     The whole app: screens, styles and logic (no build step)
+js/core.js                     Pure logic shared with the tests: compass, geodesy, validation, export/import
+config.js                      Public Supabase URL + publishable key (edit this)
+sw.js                          Service worker: caches the app for offline use
+manifest.webmanifest           Install-to-home-screen settings
+icons/                         App icons
+vendor/                        Leaflet 1.9.4, Leaflet.heat 0.2.0, supabase-js 2.x (local copies so they work offline)
+supabase/migrations/           Database schema, Row Level Security, triggers
+tests/core.test.js             Unit tests (node --test)
+tests/db/                      Database schema + RLS tests on plain PostgreSQL
+tests/e2e/                     Browser tests (Playwright) with an in-memory fake Supabase
+.github/workflows/deploy.yml   Test + deploy to GitHub Pages
+```
+
+How it fits together:
+
+- **Saving:** every record gets a UUID and its original timestamp on the phone, then is written to IndexedDB in one transaction together with an upload-queue ("outbox") entry, and read back before **SAVED** is shown. If the write fails the hunter sees **NOT SAVED** instead.
+- **Uploading:** the outbox is uploaded with `upsert` by UUID (sessions first, then observations). A record is marked synced only after Supabase returns it. Records belonging to a different hunter than the one signed in stay queued until that hunter signs in on this phone — they are never re-attributed.
+- **Downloading:** shared records are pulled incrementally by `updated_at` (plus Supabase Realtime when available). A download never overwrites a local change that is still waiting to upload.
+- **Location estimate:** destination point on a sphere (mean Earth radius) from the stand, the 16-point bearing (22.5° steps, N = 0°) and the middle of the distance range in yards × 0.9144. The map can also show the uncertainty sector (±11.25°, min–max distance). The original direction and distance range are always stored; the coordinates are an approximate derived value.
+- **Weather:** Open-Meteo values for the stand's coordinates are cached on the phone and attached to each record from the cache, so weather never delays recording. Each snapshot stores the source, the weather time, the retrieval time, and whether it is `forecast` (fresh model data) or `cached` (older than an hour). Missing values stay empty.
+- **Maps:** Esri World Imagery (with optional labels) and OpenStreetMap as an alternative layer, with attribution shown on the map. Tiles are not stored for offline use.
+
+## Automated tests
+
+```bash
+# Unit tests (compass, geodesy, validation, export/import, weather selection)
+node --test tests/*.test.js
+
+# Database schema, constraints, triggers and Row Level Security on PostgreSQL 16
+# (uses a small stub of Supabase's auth schema; needs a local PostgreSQL)
+PGHOST=localhost PGUSER=postgres bash tests/db/run.sh
+
+# Browser tests in a phone-sized Chromium (needs the `playwright` package and Chromium)
+node tests/e2e/run.js
+SCREENSHOTS=./screenshots node tests/e2e/run.js   # also saves screenshots
+```
+
+The browser tests cover the required scenarios against an in-memory **fake Supabase** (`tests/e2e/fake-supabase.js`) that mimics sign-in, upsert-by-id and the "only your own records" rule:
+
+| Test | What is checked |
+|---|---|
+| A | Sign in, choose stand, start hunt, record a sighting → saved locally with all fields, weather attached, uploaded with the same UUID and original time, marked Synced |
+| B + I | Offline: record, close the app, reopen it with no connection (served by the service worker), record is still there and pending |
+| C | Several offline records sync after reconnecting, including a case where the server saved a record but the reply was lost — no duplicates |
+| D | Gunshot saved with correct stand, tap-time timestamp and bearing (NW = 315°) |
+| E / E2 | Two hunters at different stands see each other's records; on a shared phone one hunter's queued records are never uploaded under another hunter |
+| F | Replay is chronological across stands; deer placed at the right bearing and distance; travel arrows; red **!**; dashed gunshot arrows pointing the right way to the map edge; **BANG!** appears and fades |
+| G | Export → import keeps UUIDs, timestamps and bearings; re-import adds nothing; imports are not uploaded; bad files are rejected; imported hunt replays offline |
+| H | At 320, 360 and 414 px wide: exactly 16 circular compass buttons, all visible, ≥ 44 px, not overlapping, north on top, no duplicate buttons or dropdowns, tapping a circle advances |
+| Others | Voiding keeps the original record; inactive accounts cannot record; phone-only mode works; no JavaScript errors |
+
+The database tests check, on real PostgreSQL, that hunters cannot write records as someone else, cannot attach records to another hunter's session, cannot edit original observations or un-void them, that inactive and anonymous users see nothing, that only admins manage stands/hunters, that invites activate accounts, that duplicate uploads are idempotent, and that no property tables or columns exist.
+
+**Not covered by automated tests:** a live Supabase project (real Auth e-mails, Realtime), real iPhone/Android devices, and real satellite tiles. Do steps 9 and 10 above on real phones after setting up your project.
+
+## Known limitations
+
+- **First sign-in needs internet.** After that, the app opens and records with no service.
+- **iPhone:** there is no background sync on iOS, so uploads happen while Deer Camp is open (on start, when service returns, when it comes to the front, and periodically). Open the app once you have service to upload. Install it to the home screen so iOS does not clear its saved data.
+- **Satellite imagery needs internet.** Offline, maps show stands and records over a plain background. Tiles are deliberately not saved for offline use (imagery licence terms).
+- **Weather** comes from Open-Meteo's weather models for the stand location (not a weather station). If there was never service at a stand, records there have no weather.
+- **Administrator tasks** (hunters, stands) need internet.
+- **Location estimates are approximate.** They come from a compass direction (±11.25°) and a distance range. The heat map shows where deer were *reported*, not how many deer there are; two hunters may report the same deer, and several gunshot reports may be the same shot. Deer Camp never merges reports.
+- **Dates** are grouped by the phone's own time zone. Timestamps are stored in UTC.
+- **Editing `config.js`** after phones have installed the app requires a new deployment (so the service worker picks it up), or entering the values in Settings → Connection setup.
+- Records made in **phone-only mode** cannot later be uploaded to Supabase (export them as JSON instead).
+- If e-mail confirmation is left on in Supabase, the confirmation link opens in the phone's browser; the hunter then returns to the installed app and signs in.
