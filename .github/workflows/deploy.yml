@@ -2,7 +2,7 @@ name: Test and deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/deer-camp-build-vlwccq]
   workflow_dispatch:
 
 permissions:
