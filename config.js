@@ -10,6 +10,6 @@
  * Settings → Connection setup.
  */
 window.DEER_CAMP_CONFIG = {
-  supabaseUrl: '',
+  supabaseUrl: 'https://fawfenikjwblcyloskuf.supabase.co',
   supabaseKey: ''
 };
