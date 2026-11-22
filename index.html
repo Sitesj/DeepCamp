@@ -274,13 +274,16 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .bang {
   font-family: "Impact", "Arial Black", system-ui, sans-serif; font-weight: 900; font-size: 30px; color: #ffe600;
   -webkit-text-stroke: 2px #b8231b; text-shadow: 3px 3px 0 #000; white-space: nowrap;
-  animation: bang 2.6s ease-out forwards; transform-origin: center;
+  animation: bang-pop .5s ease-out both, gun-fade-out 1s ease-in 29s forwards; transform-origin: center;
 }
 .bang::before {
   content: ""; position: absolute; inset: -14px -18px; z-index: -1; background: #e02d1b;
   clip-path: polygon(50% 0, 61% 30%, 95% 12%, 75% 42%, 100% 58%, 70% 64%, 82% 98%, 52% 74%, 22% 100%, 30% 68%, 0 70%, 24% 48%, 4% 18%, 38% 30%);
 }
-@keyframes bang { 0% { transform: scale(.2); opacity: 0; } 12% { transform: scale(1.25); opacity: 1; } 25% { transform: scale(1); } 70% { opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
+@keyframes bang-pop { 0% { transform: scale(.2); opacity: 0; } 50% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes gun-fade-out { to { opacity: 0; } }
+.gun-fade { animation: gun-fade-out 1s ease-in forwards; }
+.gun-alert.gun-fade.pulse { animation: pulse 1s ease-in-out 3, gun-fade-out 1s ease-in forwards; }
 .leaflet-popup-content { font-size: 15px; line-height: 1.35; }
 .leaflet-container { font: inherit; }
 .leaflet-control-layers-toggle { width: 44px !important; height: 44px !important; }
@@ -1889,6 +1892,7 @@ const Replay = {
   map: null, standLayer: null, evLayer: null, fxLayer: null,
   data: null, events: [], t0: 0, t1: 0, t: 0, playing: false, raf: null, lastFrame: 0,
   shown: new Map(), sessions: [],
+  GUN_SHOW_MS: 30000, // how long (real time) a gunshot's !, arrow and BANG! stay on the replay map
   init() {
     if (this.map) return;
     this.map = MapKit.create($('#replayMap'), $('#rpNote'));
@@ -1957,6 +1961,7 @@ const Replay = {
     } else if (date) {
       const b = C.localDayBounds(date); this.t0 = b.start; this.t1 = b.end;
     } else { this.t0 = this.t1 = Date.now(); }
+    this.shown.forEach((v) => clearTimeout(v.timer));
     this.evLayer.clearLayers(); this.fxLayer.clearLayers(); this.shown.clear(); this.lastCurrent = null;
     this.drawStands();
     const fitStands = standSel ? this.allStands.filter((s) => s.id === standSel) : this.allStands;
@@ -1986,7 +1991,7 @@ const Replay = {
       const ev = this.events[+b.dataset.i];
       this.pause();
       this.seek(ev.t, false);
-      if (ev.kind === 'gunshot') this.bang(ev);
+      if (ev.kind === 'gunshot') this.fireGun(ev);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   },
@@ -2028,27 +2033,28 @@ const Replay = {
     const span = this.t1 - this.t0;
     $('#rpScrub').value = span > 0 ? Math.round((this.t - this.t0) / span * 1000) : 0;
     $('#rpClock').textContent = this.events.length || span ? fmtTimeSec(this.t) : '--:--';
-    let lastDeerId = null, lastGunId = null, current = -1;
+    let lastDeerId = null, current = -1;
     this.events.forEach((e, i) => {
       const visible = e.t <= this.t;
       const has = this.shown.has(e.rec.id);
-      if (visible && !has) this.addEvent(e);
-      if (!visible && has) this.removeEvent(e);
       if (visible) current = i;
-      if (visible && e.kind === 'deer') lastDeerId = e.rec.id;
-      if (visible && e.kind === 'gunshot') lastGunId = e.rec.id;
-      if (animate && visible && e.t > prev && e.kind === 'gunshot') this.bang(e);
-    });
-    // Emphasize the most recent deer and gunshot (touch the DOM only when state changes).
-    this.shown.forEach((v, id) => {
-      if (v.kind === 'deer') {
-        const latest = id === lastDeerId;
-        const el = v.marker.getElement && v.marker.getElement();
-        if (el && el.firstChild && v.latest !== latest) { el.firstChild.classList.toggle('latest', latest); v.latest = latest; }
+      if (e.kind === 'deer') {
+        // deer stay on the map for the rest of the replay
+        if (visible && !has) this.addEvent(e);
+        if (!visible && has) this.removeEvent(e);
+        if (visible) lastDeerId = e.rec.id;
       } else {
-        const recent = id === lastGunId;
-        if (v.recent !== recent) { v.alert.setIcon(MapKit.gunAlertIcon(recent ? '' : 'old small')); v.recent = recent; }
+        // gunshots show only when the replay reaches them, for GUN_SHOW_MS of real time
+        if (!visible && has) this.removeEvent(e);
+        if (animate && visible && e.t > prev) this.fireGun(e);
       }
+    });
+    // Emphasize the most recent deer (touch the DOM only when state changes).
+    this.shown.forEach((v, id) => {
+      if (v.kind !== 'deer') return;
+      const latest = id === lastDeerId;
+      const el = v.marker.getElement && v.marker.getElement();
+      if (el && el.firstChild && v.latest !== latest) { el.firstChild.classList.toggle('latest', latest); v.latest = latest; }
     });
     if (this.lastCurrent !== current) {
       const ce = this.events[current];
@@ -2078,16 +2084,28 @@ const Replay = {
       const alert = L.marker([r.stand_latitude, r.stand_longitude], { icon: MapKit.gunAlertIcon(''), zIndexOffset: 1200 })
         .bindPopup('<b>Gunshot heard</b> from the ' + r.direction + ' at ' + fmtTime(r.observed_at) + '<br>' + esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) + '<br><i>The arrow shows direction only, not where the shot was.</i>');
       this.evLayer.addLayer(line); this.evLayer.addLayer(alert);
-      const v = { kind: 'gunshot', layers: [line, alert], line, alert, rec: r, recent: true };
+      const v = { kind: 'gunshot', layers: [line, alert], line, alert, rec: r, expires: performance.now() + this.GUN_SHOW_MS };
       this.shown.set(r.id, v);
       this.layoutGunshot(v);
+      this.setFade(alert.getElement());
     }
   },
   removeEvent(e) {
     const v = this.shown.get(e.rec.id);
     if (!v) return;
+    clearTimeout(v.timer);
     v.layers.forEach((l) => this.evLayer.removeLayer(l));
+    if (v.bang) this.fxLayer.removeLayer(v.bang);
     this.shown.delete(e.rec.id);
+  },
+  /** Start an element's fade so it ends exactly when its gunshot expires. */
+  setFade(el, v) {
+    if (!el) return;
+    const target = el.classList.contains('leaflet-marker-icon') ? el.firstElementChild : el;
+    if (!target) return;
+    const remaining = v ? v.expires - performance.now() : this.GUN_SHOW_MS;
+    target.classList.add('gun-fade');
+    target.style.animationDelay = Math.max(0, remaining - 1000) + 'ms';
   },
   /** Endpoint of the dashed gunshot arrow: toward the visible edge of the map. */
   gunEnd(r) {
@@ -2113,19 +2131,35 @@ const Replay = {
     v.line.addLayer(L.polyline([start, end.latlng], { color: '#000', weight: 7, opacity: .45, dashArray: '12 9', interactive: false }));
     v.line.addLayer(L.polyline([start, end.latlng], { color: '#ff2a1a', weight: 4, dashArray: '12 9', interactive: false }));
     v.line.addLayer(L.polyline([left, end.latlng, right], { color: '#ff2a1a', weight: 5, interactive: false }));
+    v.line.eachLayer((l) => this.setFade(l.getElement(), v));
+    if (v.bang) v.bang.setLatLng(this.bangPos(v.end));
   },
-  relayoutGunshots() { this.shown.forEach((v) => { if (v.kind === 'gunshot') this.layoutGunshot(v); }); },
-  bang(e) {
-    const v = this.shown.get(e.rec.id);
-    let end = v ? v.end : this.gunEnd(e.rec).latlng;
-    // keep the whole BANG! label inside the visible map
+  /** Keep the whole BANG! label inside the visible map. */
+  bangPos(end) {
     const size = this.map.getSize(), p = this.map.latLngToContainerPoint(end);
     const cx = Math.max(80, Math.min(size.x - 80, p.x)), cy = Math.max(40, Math.min(size.y - 40, p.y));
-    if (cx !== p.x || cy !== p.y) end = this.map.containerPointToLatLng([cx, cy]);
-    const m = L.marker(end, { icon: L.divIcon({ className: '', html: '<div style="position:relative;display:inline-block"><div class="bang">BANG!</div></div>', iconSize: [110, 44], iconAnchor: [55, 22] }), interactive: false, zIndexOffset: 2000 });
-    this.fxLayer.addLayer(m);
-    if (v) { const el = v.alert.getElement(); if (el && el.firstChild) { el.firstChild.classList.remove('pulse'); void el.offsetWidth; el.firstChild.classList.add('pulse'); } }
-    setTimeout(() => this.fxLayer.removeLayer(m), 2700);
+    return (cx !== p.x || cy !== p.y) ? this.map.containerPointToLatLng([cx, cy]) : end;
+  },
+  relayoutGunshots() { this.shown.forEach((v) => { if (v.kind === 'gunshot') this.layoutGunshot(v); }); },
+  /**
+   * The replay reached a gunshot: show the red "!", the dashed direction arrow
+   * and BANG! for GUN_SHOW_MS (30 seconds of real time), then remove them.
+   * The event stays in the list below the map.
+   */
+  fireGun(e) {
+    this.removeEvent(e);
+    this.addEvent(e);
+    const v = this.shown.get(e.rec.id);
+    v.bang = L.marker(this.bangPos(v.end), { icon: L.divIcon({ className: '', html: '<div style="position:relative;display:inline-block"><div class="bang">BANG!</div></div>', iconSize: [110, 44], iconAnchor: [55, 22] }), interactive: false, zIndexOffset: 2000 });
+    this.fxLayer.addLayer(v.bang);
+    const b = v.bang.getElement() && v.bang.getElement().querySelector('.bang');
+    if (b) b.style.animationDelay = '0ms, ' + Math.max(0, this.GUN_SHOW_MS - 1000) + 'ms';
+    const el = v.alert.getElement();
+    if (el && el.firstChild) {
+      el.firstChild.classList.add('pulse');
+      el.firstChild.style.animationDelay = '0ms, ' + Math.max(0, this.GUN_SHOW_MS - 1000) + 'ms'; // pulse now, fade at the end
+    }
+    v.timer = setTimeout(() => this.removeEvent(e), this.GUN_SHOW_MS);
   }
 };
 

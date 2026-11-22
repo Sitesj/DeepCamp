@@ -427,8 +427,22 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert(geo.guns.some((g) => g.edge < 60), 'arrow extends to the visible map edge');
     assert((await page.locator('#replayMap .gun-alert').count()) >= 3, '! markers in DOM');
     await page.waitForTimeout(3000);
-    assert((await page.locator('#replayMap .bang').count()) === 0, 'BANG! fades away');
+    assert((await page.locator('#replayMap .bang').count()) >= 1, 'BANG! still shown a few seconds later');
+    const showMs = await page.evaluate(() => window.DeerCampApp.Replay.GUN_SHOW_MS);
+    assert(showMs === 30000, 'gunshots stay 30 seconds (real time)');
     await shot(page, '12-replay-end');
+    // Gunshot !, arrows and BANG! disappear after their time; deer stay. (Shortened to 1.5 s for the test.)
+    await page.evaluate(() => { window.DeerCampApp.Replay.GUN_SHOW_MS = 1500; });
+    await page.click('#rpRestart');
+    await page.click('#rpPlay');
+    await waitFor(() => page.evaluate(() => !window.DeerCampApp.Replay.playing), 20000, 'replay end');
+    await waitFor(async () => (await page.locator('#replayMap .bang').count()) === 0 &&
+      (await page.locator('#replayMap .gun-alert').count()) === 0 &&
+      (await page.locator('#replayMap path[stroke-dasharray]').count()) === 0, 4000, 'gunshot visuals removed after their time');
+    assert((await page.locator('#replayMap .deer-pin').count()) >= 4, 'deer remain on the map');
+    const listed = await page.locator('#rpList .rp-ev.gun').count();
+    assert(listed >= 3, 'gunshots still listed in the event list');
+    await page.evaluate(() => { window.DeerCampApp.Replay.GUN_SHOW_MS = 30000; });
     // scrubbing back hides later events
     await page.click('#rpRestart');
     assert((await page.locator('#replayMap .deer-pin').count()) === 0, 'restart clears map');

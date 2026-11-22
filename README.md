@@ -208,7 +208,7 @@ Imported hunts can be replayed offline.
 1. Choose **Camp records** or **Imported files**, the **date**, and **All stands** or one stand.
 2. Tap **▶ PLAY**. The clock runs from just before the first event of the day to just after the last. Choose the speed (1x, 5x, 10x, 30x, 60x, 300x). **NEXT ⏭** jumps to the next event; drag the timeline to move anywhere; **⟲ RESTART** goes back to the start.
 3. **Deer** appear at their *estimated* first-seen location (stand + reported direction + middle of the distance range) with a short arrow showing the direction they were headed. No path is drawn: Deer Camp only knows where a deer was first seen and which way it was going.
-4. **Gunshots** show a big red **!** above the stand that heard it, a dashed red arrow from that stand toward the edge of the map in the direction the sound came from, and a **BANG!** that fades away. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
+4. **Gunshots** show a big red **!** above the stand that heard it, a dashed red arrow from that stand toward the edge of the map in the direction the sound came from, and a **BANG!**. These stay on the map for **30 seconds (real time)** and then fade away; the gunshot stays in the event list. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
 5. Tap any event in the list below the map to jump to it. Use **Deer**, **Gunshots** and **Show stands** to hide or show things.
 
 Events always appear at the time the hunter reported them, never the time they were uploaded.
