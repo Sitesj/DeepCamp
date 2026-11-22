@@ -22,7 +22,7 @@
   --orange: #e07b12; --orange-l: #fdebd3;
   --red: #b8231b; --red-l: #fbe0de;
   --muted: #555b60; --ok: #256b2a; --warn: #8a5200;
-  --buck: #8a4b14; --doe: #d9a15b; --unk: #6c7378;
+  --buck: #8a4b14; --doe: #d9a15b; --fawn: #f1d3a6; --unk: #6c7378; --mixed: #2d6f8e;
   --hdr: 56px;
 }
 * { box-sizing: border-box; }
@@ -186,6 +186,19 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .cpt.sel { background: var(--green) !important; color: #fff !important; border-color: #0b2a0f !important; transform: scale(1.14); box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--green); z-index: 2; }
 .cpt:focus-visible { outline: 4px solid var(--orange); outline-offset: 2px; }
 
+.counts-form { margin: 8px 0 4px; }
+.count-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 8px 10px 8px 14px; margin-bottom: 10px; min-height: 76px;
+}
+.count-row.has { border-color: var(--green); background: var(--green-l); }
+.count-name { display: flex; align-items: center; gap: 10px; font-size: 1.45rem; font-weight: 900; }
+.count-name .sw { width: 22px; height: 22px; }
+.count-row select {
+  width: 110px; min-height: 60px; font-size: 1.8rem; font-weight: 900; text-align: center; text-align-last: center;
+  border: 3px solid var(--char); border-radius: 12px; background: #fff; padding: 0 8px;
+}
+.count-total { font-size: 1.1rem; font-weight: 700; min-height: 1.4em; }
 .qty { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 20px 0; }
 .qty button { width: 96px; height: 96px; border-radius: 50%; font-size: 3rem; font-weight: 900; border: 3px solid var(--char); background: #fff; }
 .qty .n { font-size: 4.2rem; font-weight: 900; min-width: 2ch; text-align: center; }
@@ -247,6 +260,8 @@ label.field input, label.field select, label.field textarea, select.big, input.b
   display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,.7);
 }
 .deer-pin.buck { background: var(--buck); } .deer-pin.doe { background: var(--doe); color: #111; } .deer-pin.unknown { background: var(--unk); }
+.deer-pin.fawn { background: var(--fawn); color: #111; } .deer-pin.mixed { background: var(--mixed); }
+.sw-buck { background: var(--buck); } .sw-doe { background: var(--doe); } .sw-fawn { background: var(--fawn); } .sw-unknown { background: var(--unk); }
 .deer-pin.latest { box-shadow: 0 0 0 4px var(--orange), 0 1px 4px rgba(0,0,0,.7); }
 .gun-alert {
   width: 40px; height: 40px; border-radius: 50%; background: var(--red); color: #fff; border: 3px solid #fff;
@@ -394,6 +409,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <div class="chips" id="lmTypes">
         <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
         <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
+        <button class="chip" data-type="fawn" aria-pressed="true">Fawn</button>
         <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
         <button class="chip" data-type="gunshot" aria-pressed="true">Gunshots</button>
         <button class="chip" data-type="sector" aria-pressed="false">Distance range</button>
@@ -404,7 +420,9 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <span><i class="sw" style="background:var(--orange);border-radius:3px"></i>Stand</span>
       <span><i class="sw" style="background:var(--buck)"></i>Buck</span>
       <span><i class="sw" style="background:var(--doe)"></i>Doe</span>
+      <span><i class="sw" style="background:var(--fawn)"></i>Fawn</span>
       <span><i class="sw" style="background:var(--unk)"></i>Unknown</span>
+      <span><i class="sw" style="background:var(--mixed)"></i>Mixed group</span>
       <span><b style="color:var(--red)">- - →</b> Gunshot heard from (direction only)</span>
     </div>
     <p class="small muted" style="padding:0 12px" id="lmCount"></p>
@@ -427,6 +445,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <div class="chips" id="hmTypes">
         <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
         <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
+        <button class="chip" data-type="fawn" aria-pressed="true">Fawn</button>
         <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
         <button class="chip" data-type="weight" aria-pressed="true">Weight by number of deer</button>
       </div>
@@ -952,7 +971,7 @@ const Sync = {
             if (rec[f] != null) rec[f] = Number(rec[f]);
           });
           rec._sync = 'synced'; rec._rev = 0; rec.updated_at = row.updated_at;
-          os.put(rec);
+          os.put(table === 'deer_sightings' ? C.normalizeSighting(rec) : rec);
         };
       });
     });
@@ -1367,7 +1386,7 @@ async function renderHome() {
 
 function describe(rec, kind) {
   if (kind === 'gunshot') return 'Gunshot Heard — ' + rec.direction;
-  return C.deerLabel(rec.quantity, rec.deer_type) + ' — First Seen ' + rec.first_seen_direction + ' (' + (C.distanceRange(rec.distance_range) || {}).label + ')' +
+  return C.deerLabel(rec) + ' — First Seen ' + rec.first_seen_direction + ' (' + (C.distanceRange(rec.distance_range) || {}).label + ')' +
     ' — ' + (rec.heading_direction ? 'Headed ' + rec.heading_direction : 'Heading not sure');
 }
 
@@ -1418,18 +1437,19 @@ const WZ = { st: null };
 function openWizard(prefill) {
   WZ.st = Object.assign({
     step: 1, id: C.uuid(), observed_at: new Date().toISOString(), // captured when reporting begins
-    first: null, distance: null, heading: undefined, quantity: 1, type: null, saving: false, corrects_id: null
+    first: null, distance: null, heading: undefined, counts: { buck: 0, doe: 0, fawn: 0, unknown: 0 }, saving: false, corrects_id: null
   }, prefill || {});
   $('#wizard').classList.add('open');
   renderWizard();
 }
+const countFields = (c) => ({ buck_count: c.buck, doe_count: c.doe, fawn_count: c.fawn, unknown_count: c.unknown });
 function closeWizard() { $('#wizard').classList.remove('open'); WZ.st = null; }
 function wzNext() { WZ.st.step++; renderWizard(); }
 
 function renderWizard() {
   const st = WZ.st, body = $('#wzBody');
   $('#wzBack').style.visibility = st.step > 1 ? 'visible' : 'hidden';
-  const head = '<p class="stepnum">Step ' + st.step + ' of 6 · Seen at ' + fmtTime(st.observed_at) + (st.corrects_id ? ' · Correction' : '') + '</p>';
+  const head = '<p class="stepnum">Step ' + st.step + ' of 5 · Seen at ' + fmtTime(st.observed_at) + (st.corrects_id ? ' · Correction' : '') + '</p>';
   if (st.step === 1) {
     body.innerHTML = head + '<p class="question">Which direction did you first see the deer?</p><div id="wzCompass"></div>';
     renderCompass($('#wzCompass'), { selected: st.first, onPick: (d) => { st.first = d; wzNext(); } });
@@ -1448,25 +1468,22 @@ function renderWizard() {
     renderCompass($('#wzCompass'), { selected: st.heading || null, centerText: 'DEER HEADED', onPick: (d) => { st.heading = d; wzNext(); } });
     $('#wzNotSure').onclick = () => { st.heading = null; setTimeout(wzNext, 150); };
   } else if (st.step === 4) {
-    body.innerHTML = head + '<p class="question">How many deer?</p>' +
-      '<div class="qty"><button id="qMinus" aria-label="One fewer">−</button><span class="n" id="qN" aria-live="polite">' + st.quantity + '</span><button id="qPlus" aria-label="One more">+</button></div>' +
+    const opts = (n) => Array.from({ length: 31 }, (_, i) => '<option value="' + i + '"' + (i === n ? ' selected' : '') + '>' + i + '</option>').join('');
+    body.innerHTML = head + '<p class="question">How many of each?</p>' +
+      '<div class="counts-form">' + C.DEER_TYPES.map((t) =>
+        '<label class="count-row"><span class="count-name"><i class="sw sw-' + t + '"></i>' + (t === 'unknown' ? 'UNKNOWN' : C.TYPE_NAMES[t][1].toUpperCase()) + '</span>' +
+        '<select data-type="' + t + '" aria-label="Number of ' + (t === 'unknown' ? 'unknown deer' : C.TYPE_NAMES[t][1].toLowerCase()) + '">' + opts(st.counts[t]) + '</select></label>').join('') +
+      '</div><p class="center count-total" id="cTotal" aria-live="polite"></p>' +
       '<button class="btn btn-primary btn-big" id="qNext">NEXT</button>';
-    const upd = () => { $('#qN').textContent = st.quantity; $('#qMinus').disabled = st.quantity <= 1; };
-    $('#qMinus').onclick = () => { st.quantity = Math.max(1, st.quantity - 1); upd(); };
-    $('#qPlus').onclick = () => { st.quantity = Math.min(500, st.quantity + 1); upd(); };
-    $('#qNext').onclick = wzNext;
+    const upd = () => {
+      const total = C.totalOf(st.counts);
+      $('#cTotal').textContent = total ? 'Total: ' + total + ' deer — ' + C.deerLabel(Object.assign({ quantity: total }, countFields(st.counts))) : 'Choose how many you saw.';
+      $('#qNext').disabled = total < 1;
+      $$('.count-row', body).forEach((row) => row.classList.toggle('has', +$('select', row).value > 0));
+    };
+    $$('select[data-type]', body).forEach((sel) => sel.onchange = () => { st.counts[sel.dataset.type] = +sel.value; upd(); });
+    $('#qNext').onclick = () => { if (C.totalOf(st.counts) >= 1) wzNext(); };
     upd();
-  } else if (st.step === 5) {
-    body.innerHTML = head + '<p class="question">What type of deer?</p>' +
-      [['buck', 'BUCK'], ['doe', 'DOE'], ['unknown', 'UNKNOWN']].map(([k, l]) =>
-        '<button class="btn btn-big' + (st.type === k ? ' btn-primary' : '') + '" data-t="' + k + '">' + l + '</button>').join('') +
-      '<p class="small muted center">Saw bucks and does together? Record one type now, then log a second sighting for the others.</p>';
-    $$('button[data-t]', body).forEach((b) => b.onclick = () => {
-      $$('button[data-t]', body).forEach((x) => x.classList.remove('btn-primary'));
-      b.classList.add('btn-primary');
-      st.type = b.dataset.t;
-      setTimeout(wzNext, 200);
-    });
   } else {
     const stand = standById(S.standId);
     body.innerHTML = head + '<p class="question">Check and record</p><div class="card summary">' +
@@ -1474,8 +1491,7 @@ function renderWizard() {
       '<div><span>First seen</span><b>' + st.first + '</b></div>' +
       '<div><span>Distance</span><b>' + C.distanceRange(st.distance).label + '</b></div>' +
       '<div><span>Headed</span><b>' + (st.heading ? st.heading : 'Not sure') + '</b></div>' +
-      '<div><span>How many</span><b>' + st.quantity + '</b></div>' +
-      '<div><span>Type</span><b>' + st.type.toUpperCase() + '</b></div>' +
+      '<div><span>Deer</span><b>' + esc(C.deerLabel(Object.assign({ quantity: C.totalOf(st.counts) }, countFields(st.counts)))) + '</b></div>' +
       '<div><span>Time</span><b>' + fmtTime(st.observed_at) + '</b></div></div>' +
       '<button class="btn btn-primary btn-big" id="wzSave">RECORD SIGHTING</button>' +
       '<p class="small muted center">Tap ◀ BACK to change an answer.</p>';
@@ -1500,7 +1516,7 @@ async function saveSighting() {
       rec = C.buildSighting({
         id: st.id, hunter_id: S.identity.hunter_id, stand, session_id: sess.id, observed_at: st.observed_at,
         first_seen_direction: st.first, distance_range: st.distance, heading_direction: st.heading || null,
-        quantity: st.quantity, deer_type: st.type, weather: await Weather.snapshot(stand.id, st.observed_at),
+        counts: st.counts, weather: await Weather.snapshot(stand.id, st.observed_at),
         corrects_id: st.corrects_id
       });
       const errs = C.validateSighting(rec);
@@ -1622,7 +1638,7 @@ async function correctFlow(table, id) {
   show('home');
   if (table === 'deer_sightings') {
     openWizard({ observed_at: rec.observed_at, corrects_id: rec.id, first: rec.first_seen_direction, distance: rec.distance_range,
-      heading: rec.heading_direction, quantity: rec.quantity, type: rec.deer_type });
+      heading: rec.heading_direction, counts: C.deerCounts(rec) });
   } else {
     GS.st = { id: C.uuid(), observed_at: rec.observed_at, saving: false };
     $('#gsTime').textContent = 'Correction for gunshot heard at ' + fmtTimeSec(Date.parse(rec.observed_at));
@@ -1670,6 +1686,11 @@ function bindChips(container, cb, single) {
     else c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
     cb();
   }));
+}
+/** True when a sighting includes at least one deer of a selected type. */
+function hasTypes(rec, types) {
+  const c = C.deerCounts(rec);
+  return C.DEER_TYPES.some((t) => c[t] > 0 && types.has(t));
 }
 function fillStandSelect(sel, stands, keep) {
   const cur = keep ? sel.value : '';
@@ -1734,7 +1755,7 @@ const MapKit = {
     const end = C.destinationPoint(lat, lng, rec.heading_bearing, len);
     const l = C.destinationPoint(end.lat, end.lng, rec.heading_bearing + 150, 10);
     const r = C.destinationPoint(end.lat, end.lng, rec.heading_bearing - 150, 10);
-    const color = rec.deer_type === 'doe' ? '#ffd28a' : '#ffffff';
+    const color = rec.deer_type === 'doe' || rec.deer_type === 'fawn' ? '#ffd28a' : '#ffffff';
     return L.layerGroup([
       L.polyline([[lat, lng], [end.lat, end.lng]], { color: '#000', weight: 7, opacity: .55 }),
       L.polyline([[l.lat, l.lng], [end.lat, end.lng], [r.lat, r.lng]], { color: '#000', weight: 7, opacity: .55 }),
@@ -1747,7 +1768,7 @@ const MapKit = {
     return L.polygon(pts, { color: '#ffffff', weight: 1, dashArray: '4 4', fillColor: '#ffffff', fillOpacity: 0.12, interactive: false });
   },
   deerPopup(rec) {
-    return '<b>' + esc(C.deerLabel(rec.quantity, rec.deer_type)) + '</b><br>' + fmtDay(rec.observed_at) + ' ' + fmtTime(rec.observed_at) +
+    return '<b>' + esc(C.deerLabel(rec)) + '</b><br>' + fmtDay(rec.observed_at) + ' ' + fmtTime(rec.observed_at) +
       '<br>' + esc(hunterName(rec.hunter_id)) + ' — ' + esc(standName(rec.stand_id)) +
       '<br>First seen ' + rec.first_seen_direction + ', ' + (C.distanceRange(rec.distance_range) || {}).label +
       '<br>' + (rec.heading_direction ? 'Headed ' + rec.heading_direction : 'Heading not sure') +
@@ -1790,7 +1811,7 @@ const LiveMap = {
     const standSel = $('#lmStand').value;
     const tf = timeFilter($('#lmTime').value);
     const ok = (r) => r.status !== 'voided' && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel);
-    const sightings = d.sightings.filter((r) => ok(r) && types.has(r.deer_type)).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const sightings = d.sightings.filter((r) => ok(r) && hasTypes(r, types)).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
     const gunshots = types.has('gunshot') ? d.gunshots.filter(ok) : [];
     this.layer.clearLayers();
     const stands = standsForRecords(activeStands(), sightings.concat(gunshots));
@@ -1846,9 +1867,10 @@ const HeatMap = {
     const types = chipSet($('#hmTypes'));
     const standSel = $('#hmStand').value;
     const tf = timeFilter($('#hmTime').value, $('#hmFrom').value, $('#hmTo').value);
-    const recs = d.sightings.filter((r) => r.status !== 'voided' && types.has(r.deer_type) && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel));
+    const recs = d.sightings.filter((r) => r.status !== 'voided' && hasTypes(r, types) && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel));
     const weight = types.has('weight');
-    const pts = recs.map((r) => { const p = MapKit.deerPos(r); return [p[0], p[1], weight ? r.quantity : 1]; });
+    const sel = C.DEER_TYPES.filter((t) => types.has(t));
+    const pts = recs.map((r) => { const p = MapKit.deerPos(r); return [p[0], p[1], weight ? C.totalOf(C.deerCounts(r), sel) : 1]; });
     const max = Math.max(1, ...pts.map((p) => p[2]));
     if (this.heat) this.map.removeLayer(this.heat);
     this.heat = L.heatLayer(pts, { radius: 32, blur: 22, maxZoom: 17, max: Math.max(2, max), minOpacity: 0.35 }).addTo(this.map);
@@ -1856,7 +1878,7 @@ const HeatMap = {
     const stands = standsForRecords(activeStands(), recs);
     stands.forEach((s) => this.layer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
     if (!this.fitted) { MapKit.fit(this.map, standSel ? stands.filter((s) => s.id === standSel) : stands); this.fitted = true; }
-    const deer = recs.reduce((n, r) => n + r.quantity, 0);
+    const deer = recs.reduce((n, r) => n + C.totalOf(C.deerCounts(r), sel), 0);
     $('#hmCount').textContent = recs.length + ' sighting report(s), ' + deer + ' deer reported in total.';
     if (!navigator.onLine) MapKit.note($('#hmNote'), 'Offline: using records saved on this phone.');
   }
@@ -2046,7 +2068,7 @@ const Replay = {
       const parts = [];
       const arrow = MapKit.travelArrow(r);
       if (arrow) { this.evLayer.addLayer(arrow); parts.push(arrow); }
-      const popup = '<b>' + esc(C.deerLabel(r.quantity, r.deer_type)) + '</b> — ' + fmtTime(r.observed_at) + '<br>' + esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) +
+      const popup = '<b>' + esc(C.deerLabel(r)) + '</b> — ' + fmtTime(r.observed_at) + '<br>' + esc(this.nameOfHunter(r.hunter_id)) + ' — ' + esc(this.nameOfStand(r.stand_id)) +
         '<br>First seen ' + r.first_seen_direction + ', ' + (C.distanceRange(r.distance_range) || {}).label + '<br>' + (r.heading_direction ? 'Headed ' + r.heading_direction : 'Heading not sure');
       const m = MapKit.deerMarker(r, false).bindPopup(popup);
       this.evLayer.addLayer(m); parts.push(m);
@@ -2127,7 +2149,7 @@ async function renderActivity() {
     const [cls, label] = syncLabel(r);
     const mine = S.identity && r.hunter_id === S.identity.hunter_id;
     const what = gun ? 'Gunshot Heard — ' + r.direction
-      : esc(C.deerLabel(r.quantity, r.deer_type)) + ' — First Seen ' + r.first_seen_direction + ' — ' + (r.heading_direction ? 'Headed ' + r.heading_direction : 'Heading not sure');
+      : esc(C.deerLabel(r)) + ' — First Seen ' + r.first_seen_direction + ' — ' + (r.heading_direction ? 'Headed ' + r.heading_direction : 'Heading not sure');
     return '<div class="feed-item' + (gun ? ' gun' : '') + (r.status === 'voided' ? ' voided' : '') + '">' +
       '<div class="when">' + fmtTime(r.observed_at) + ' — ' + esc(hunterName(r.hunter_id)) + ' — ' + esc(standName(r.stand_id)) + '</div>' +
       '<div class="what">' + what + (gun ? '' : ' <span class="small muted">(' + (C.distanceRange(r.distance_range) || {}).label + ')</span>') + '</div>' +

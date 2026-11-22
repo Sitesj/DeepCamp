@@ -66,18 +66,18 @@ values ('33333333-3333-4333-8333-333333333333', '00000000-0000-4000-8000-0000000
 
 insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at, first_seen_direction,
   first_seen_bearing, distance_range, distance_min_yards, distance_max_yards, heading_direction,
-  heading_bearing, quantity, deer_type, stand_latitude, stand_longitude, est_latitude, est_longitude, status)
+  heading_bearing, quantity, doe_count, deer_type, stand_latitude, stand_longitude, est_latitude, est_longitude, status)
 values ('44444444-4444-4444-8444-444444444444', '00000000-0000-4000-8000-00000000000b',
   '11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333333',
-  '2026-11-20T12:12:00Z', 'NE', 45, '50-75', 50, 75, 'SW', 225, 2, 'doe', 38.5, -90.5, 38.5004, -90.4995, 'active');
+  '2026-11-20T12:12:00Z', 'NE', 45, '50-75', 50, 75, 'SW', 225, 2, 2, 'doe', 38.5, -90.5, 38.5004, -90.4995, 'active');
 
 -- Idempotent re-upload of the identical record (same UUID) must not duplicate or fail
 insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at, first_seen_direction,
   first_seen_bearing, distance_range, distance_min_yards, distance_max_yards, heading_direction,
-  heading_bearing, quantity, deer_type, stand_latitude, stand_longitude, est_latitude, est_longitude, status)
+  heading_bearing, quantity, doe_count, deer_type, stand_latitude, stand_longitude, est_latitude, est_longitude, status)
 values ('44444444-4444-4444-8444-444444444444', '00000000-0000-4000-8000-00000000000b',
   '11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333333',
-  '2026-11-20T12:12:00Z', 'NE', 45, '50-75', 50, 75, 'SW', 225, 2, 'doe', 38.5, -90.5, 38.5004, -90.4995, 'active')
+  '2026-11-20T12:12:00Z', 'NE', 45, '50-75', 50, 75, 'SW', 225, 2, 2, 'doe', 38.5, -90.5, 38.5004, -90.4995, 'active')
 on conflict (id) do update set
   hunter_id = excluded.hunter_id, stand_id = excluded.stand_id, session_id = excluded.session_id,
   observed_at = excluded.observed_at, first_seen_direction = excluded.first_seen_direction,
@@ -94,16 +94,40 @@ values ('55555555-5555-4555-8555-555555555555', '00000000-0000-4000-8000-0000000
 -- Bad data rejected by constraints
 select pg_temp.expect_fail($$insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at,
   first_seen_direction, first_seen_bearing, distance_range, distance_min_yards, distance_max_yards,
-  quantity, deer_type, stand_latitude, stand_longitude)
+  quantity, doe_count, deer_type, stand_latitude, stand_longitude)
   values (gen_random_uuid(), auth.uid(), '11111111-1111-4111-8111-111111111111',
-  '33333333-3333-4333-8333-333333333333', now(), 'NE', 90, '50-75', 50, 75, 1, 'doe', 38.5, -90.5)$$,
+  '33333333-3333-4333-8333-333333333333', now(), 'NE', 90, '50-75', 50, 75, 1, 1, 'doe', 38.5, -90.5)$$,
   'bearing must match direction');
 select pg_temp.expect_fail($$insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at,
   first_seen_direction, first_seen_bearing, distance_range, distance_min_yards, distance_max_yards,
-  quantity, deer_type, stand_latitude, stand_longitude)
+  quantity, doe_count, deer_type, stand_latitude, stand_longitude)
   values (gen_random_uuid(), auth.uid(), '11111111-1111-4111-8111-111111111111',
-  '33333333-3333-4333-8333-333333333333', now(), 'NE', 45, '50-75', 50, 75, 0, 'doe', 38.5, -90.5)$$,
+  '33333333-3333-4333-8333-333333333333', now(), 'NE', 45, '50-75', 50, 75, 0, 0, 'doe', 38.5, -90.5)$$,
   'quantity must be at least 1');
+
+-- Mixed groups: 3 does, 1 buck, 2 fawns in one sighting
+insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at, first_seen_direction,
+  first_seen_bearing, distance_range, distance_min_yards, distance_max_yards, quantity,
+  buck_count, doe_count, fawn_count, unknown_count, deer_type, stand_latitude, stand_longitude)
+values ('77777777-7777-4777-8777-777777777777', auth.uid(), '11111111-1111-4111-8111-111111111111',
+  '33333333-3333-4333-8333-333333333333', '2026-11-20T12:40:00Z', 'E', 90, '25-50', 25, 50, 6,
+  1, 3, 2, 0, 'mixed', 38.5, -90.5);
+select pg_temp.expect((select doe_count = 3 and fawn_count = 2 and deer_type = 'mixed'
+  from deer_sightings where id = '77777777-7777-4777-8777-777777777777'), 'mixed group saved');
+select pg_temp.expect_fail($$insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at,
+  first_seen_direction, first_seen_bearing, distance_range, distance_min_yards, distance_max_yards,
+  quantity, buck_count, doe_count, deer_type, stand_latitude, stand_longitude)
+  values (gen_random_uuid(), auth.uid(), '11111111-1111-4111-8111-111111111111',
+  '33333333-3333-4333-8333-333333333333', now(), 'E', 90, '25-50', 25, 50, 5, 1, 3, 'mixed', 38.5, -90.5)$$,
+  'counts must add up to quantity');
+select pg_temp.expect_fail($$insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at,
+  first_seen_direction, first_seen_bearing, distance_range, distance_min_yards, distance_max_yards,
+  quantity, fawn_count, deer_type, stand_latitude, stand_longitude)
+  values (gen_random_uuid(), auth.uid(), '11111111-1111-4111-8111-111111111111',
+  '33333333-3333-4333-8333-333333333333', now(), 'E', 90, '25-50', 25, 50, 2, 2, 'doe', 38.5, -90.5)$$,
+  'deer_type must match counts');
+select pg_temp.expect_fail($$update deer_sightings set doe_count = 4, quantity = 7
+  where id = '77777777-7777-4777-8777-777777777777'$$, 'counts in an original sighting cannot be edited');
 select pg_temp.expect_fail($$insert into gunshot_reports (id, hunter_id, stand_id, session_id, observed_at,
   direction, bearing, stand_latitude, stand_longitude)
   values (gen_random_uuid(), auth.uid(), '11111111-1111-4111-8111-111111111111',
@@ -132,7 +156,7 @@ reset role;
 
 -- ---- John sees Mike's shared records but cannot void them
 select pg_temp.act_as('00000000-0000-4000-8000-00000000000c');
-select pg_temp.expect((select count(*) from deer_sightings) = 1, 'other hunter can read shared sightings');
+select pg_temp.expect((select count(*) from deer_sightings) = 2, 'other hunter can read shared sightings');
 select pg_temp.expect((select count(*) from profiles) = 4, 'member can see group profiles');
 update deer_sightings set status = 'voided', voided_at = now() where id = '44444444-4444-4444-8444-444444444444';
 reset role;

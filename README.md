@@ -41,7 +41,12 @@ Deer Camp is a phone app for a small hunting group. Each hunter picks their name
 
 ## 2. Apply the database migration
 
-The schema is in [`supabase/migrations/20261122000001_deer_camp_schema.sql`](supabase/migrations/20261122000001_deer_camp_schema.sql). It creates:
+The schema is in two files in [`supabase/migrations/`](supabase/migrations/). Run them **in order, each once**:
+
+1. `20261122000001_deer_camp_schema.sql` — the tables, security and triggers
+2. `20261122000002_mixed_deer_groups.sql` — adds buck / doe / fawn / unknown counts so one sighting can be a mixed group (existing sightings are converted automatically)
+
+Together they create:
 
 | Table | Purpose |
 |---|---|
@@ -49,12 +54,12 @@ The schema is in [`supabase/migrations/20261122000001_deer_camp_schema.sql`](sup
 | `hunter_invites` | Hunters the administrator has added by e-mail (supporting table) |
 | `stands` | Stand name, latitude, longitude, description, active flag |
 | `hunting_sessions` | Start / end of each hunt (hunter + stand) |
-| `deer_sightings` | Every deer sighting with direction, distance range, heading, quantity, type, weather |
+| `deer_sightings` | Every deer sighting with direction, distance range, heading, number of bucks / does / fawns / unknown (one sighting can be a mixed group), total, weather |
 | `gunshot_reports` | Every gunshot heard with direction and bearing |
 
 It also turns on Row Level Security, adds the policies, check constraints, indexes, triggers and Realtime publication.
 
-**Option A — SQL Editor (easiest):** open your project → **SQL Editor** → **New query**, paste the whole migration file, click **Run**. It should finish with "Success. No rows returned".
+**Option A — SQL Editor (easiest):** open your project → **SQL Editor** → **New query**, paste the first migration file, click **Run**. It should finish with "Success. No rows returned". Then do the same with the second file in a new query.
 
 **Option B — Supabase CLI:**
 
@@ -213,13 +218,12 @@ Events always appear at the time the hunter reported them, never the time they w
 ## Using Deer Camp in the stand
 
 - **START HUNT** when you get in the stand, **END HUNT** when you leave. (If you forget, logging a sighting starts a hunt automatically.) Hunts with no sightings are kept too — they show how much time was spent hunting.
-- **LOG DEER SIGHTING** (6 steps, the time is taken when you tap the button):
+- **LOG DEER SIGHTING** (5 steps, the time is taken when you tap the button):
   1. Tap the circle on the compass where you **first saw** the deer (north is always at the top).
   2. Tap **how far** away: 0–25, 25–50, 50–75, 75–100 or 100–200 yards.
   3. Tap the direction the deer was **headed**, or **NOT SURE**.
-  4. **How many**: use − and +.
-  5. **BUCK**, **DOE** or **UNKNOWN**. Saw bucks and does together? Log them as two sightings.
-  6. Check the summary and tap **RECORD SIGHTING**.
+  4. **How many of each?** Pick a number from the dropdown next to **BUCKS**, **DOES**, **FAWNS** and **UNKNOWN** — for example 3 does, 1 buck and 2 fawns in one sighting.
+  5. Check the summary and tap **RECORD SIGHTING**.
 - **GUNSHOT HEARD**: tap it right away (the time is taken then), then tap the compass circle the shot came **from**. That's it.
 - **Mistakes:** tap **UNDO** on the confirmation screen, or **UNDO** under "Your last entry" on the home screen, or **FIX** in Camp Activity. You can re-enter it correctly (the original time is kept) or void it. Nothing is ever erased: the original stays in the history marked *voided*.
 - The top bar always shows **Online/Offline** and the sync status: *Saved on Phone*, *Waiting to Sync*, *Syncing*, *Synced*, *Sync Failed*.

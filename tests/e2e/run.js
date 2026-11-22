@@ -103,11 +103,10 @@ async function recordDeer(page, o) {
   await page.waitForSelector('text=Which direction was the deer headed?');
   if (o.head) await page.locator('#wzCompass .cpt[data-dir="' + o.head + '"]').click();
   else await page.click('#wzNotSure');
-  await page.waitForSelector('text=How many deer?');
-  for (let i = 1; i < (o.qty || 1); i++) await page.click('#qPlus');
+  await page.waitForSelector('text=How many of each?');
+  const counts = o.counts || { [o.type]: o.qty || 1 };
+  for (const [t, n] of Object.entries(counts)) await page.selectOption('#wzBody select[data-type="' + t + '"]', String(n));
   await page.click('#qNext');
-  await page.waitForSelector('text=What type of deer?');
-  await page.locator('#wzBody button[data-t="' + o.type + '"]').click();
   await page.waitForSelector('#wzSave');
   await page.click('#wzSave');
   await page.waitForSelector('#confirm.open');
@@ -151,6 +150,8 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert((await page.textContent('#homeHunter')) === 'Mike', 'hunter name shown');
     await page.click('#huntToggle');
     await waitFor(() => page.evaluate(() => !!window.DeerCampApp.S.session), 5000, 'session');
+    // weather is attached from the phone's cache (it never delays recording), so let it arrive first
+    await waitFor(() => page.evaluate(() => window.DeerCampApp.DB.all('weather').then((w) => w.length > 0)), 5000, 'weather cached');
     const before = Date.now();
     const msg = await recordDeer(page, { first: 'NE', dist: '50–75', head: 'SW', qty: 2, type: 'doe' });
     assert(msg === 'SIGHTING SAVED', 'confirmation: ' + msg);
@@ -185,6 +186,33 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert(g.stand_id === ridge.id && g.stand_latitude === ridge.latitude, 'stand');
     assert(Date.parse(g.observed_at) >= t0 - 1000 && Date.parse(g.observed_at) <= t0 + 2000, 'timestamp captured at tap');
     await waitFor(() => fake.tables.gunshot_reports.some((x) => x.id === g.id && x.bearing === 315), 10000, 'gunshot uploaded');
+  });
+
+  await test('Mixed group: 3 does, 1 buck and 2 fawns in one sighting', async () => {
+    await page.click('#logDeerBtn');
+    await page.waitForSelector('#wizard.open');
+    await page.locator('#wzCompass .cpt[data-dir="ESE"]').click();
+    await page.locator('#wzBody button', { hasText: '25–50' }).click();
+    await page.locator('#wzCompass .cpt[data-dir="N"]').click();
+    await page.waitForSelector('text=How many of each?');
+    assert(await page.isDisabled('#qNext'), 'NEXT disabled until a deer is chosen');
+    const sel = await page.locator('#wzBody select[data-type]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.dataset.type, h: r.height, w: r.width }; }));
+    assert(sel.map((x) => x.t).join() === 'buck,doe,fawn,unknown', 'a dropdown for each type: ' + sel.map((x) => x.t));
+    assert(sel.every((x) => x.h >= 56 && x.w >= 90), 'dropdowns are large');
+    await page.selectOption('#wzBody select[data-type="doe"]', '3');
+    await page.selectOption('#wzBody select[data-type="buck"]', '1');
+    await page.selectOption('#wzBody select[data-type="fawn"]', '2');
+    assert((await page.textContent('#cTotal')).includes('Total: 6 deer'), 'running total');
+    await shot(page, '04b-counts');
+    await page.click('#qNext');
+    await page.waitForSelector('#wzSave');
+    assert((await page.textContent('#wzBody')).includes('1 Buck, 3 Does, 2 Fawns'), 'summary shows the group');
+    await page.click('#wzSave');
+    await page.waitForSelector('#confirm.open');
+    await page.click('#cfOk');
+    const r = (await local(page, 'sightings')).find((x) => x.first_seen_direction === 'ESE');
+    assert(r.quantity === 6 && r.deer_type === 'mixed' && r.buck_count === 1 && r.doe_count === 3 && r.fawn_count === 2 && r.unknown_count === 0, 'counts saved');
+    await waitFor(() => fake.tables.deer_sightings.some((x) => x.id === r.id && x.fawn_count === 2 && x.deer_type === 'mixed'), 10000, 'mixed group uploaded');
   });
 
   await test('H: compass on narrow phones — 16 clickable circles, no duplicate buttons, large targets', async () => {
@@ -414,7 +442,7 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exBtn')]);
     const file = await dl.path();
     const exp = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert(exp.schema === 'deer-camp-hunt-export' && exp.schema_version === 1, 'schema');
+    assert(exp.schema === 'deer-camp-hunt-export' && exp.schema_version === 2, 'schema');
     assert(!/propert/i.test(JSON.stringify(exp)), 'no property info');
     const localS = await local(page, 'sightings');
     assert(exp.deer_sightings.length === localS.length, 'all sightings exported');

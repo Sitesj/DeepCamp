@@ -8,9 +8,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var APP_VERSION = '1.0.0';
+  var APP_VERSION = '1.1.0';
   var EXPORT_SCHEMA = 'deer-camp-hunt-export';
-  var EXPORT_SCHEMA_VERSION = 1;
+  var EXPORT_SCHEMA_VERSION = 2; // 2: per-type counts (buck/doe/fawn/unknown) in each sighting
 
   // ---------------------------------------------------------------- Compass
   var DIRECTIONS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
@@ -191,13 +191,51 @@
     return { start: start, end: end };
   }
 
-  var DEER_TYPES = ['buck', 'doe', 'unknown'];
+  // One sighting can be a mixed group: a count is kept for each type.
+  var DEER_TYPES = ['buck', 'doe', 'fawn', 'unknown'];
+  var COUNT_FIELDS = { buck: 'buck_count', doe: 'doe_count', fawn: 'fawn_count', unknown: 'unknown_count' };
+  var TYPE_NAMES = { buck: ['Buck', 'Bucks'], doe: ['Doe', 'Does'], fawn: ['Fawn', 'Fawns'], unknown: ['Unknown', 'Unknown'] };
 
-  function deerLabel(quantity, type) {
-    var q = quantity || 1;
-    if (type === 'buck') return q + (q === 1 ? ' Buck' : ' Bucks');
-    if (type === 'doe') return q + (q === 1 ? ' Doe' : ' Does');
-    return q + ' Deer (type unknown)';
+  /** Counts per type. Older records (one type + quantity) are read the same way. */
+  function deerCounts(rec) {
+    var c = { buck: 0, doe: 0, fawn: 0, unknown: 0 }, any = false;
+    DEER_TYPES.forEach(function (t) {
+      var v = rec && rec[COUNT_FIELDS[t]];
+      if (typeof v === 'number' && v > 0) { c[t] = v; any = true; }
+    });
+    if (!any && rec && rec.quantity > 0 && DEER_TYPES.indexOf(rec.deer_type) >= 0) c[rec.deer_type] = rec.quantity;
+    return c;
+  }
+
+  /** 'buck' | 'doe' | 'fawn' | 'unknown' when only one type was seen, 'mixed' otherwise. */
+  function groupType(counts) {
+    var nz = DEER_TYPES.filter(function (t) { return counts[t] > 0; });
+    return nz.length === 1 ? nz[0] : (nz.length ? 'mixed' : null);
+  }
+
+  function totalOf(counts, types) {
+    return (types || DEER_TYPES).reduce(function (n, t) { return n + (counts[t] || 0); }, 0);
+  }
+
+  /** "3 Does, 1 Buck, 2 Fawns". Accepts a sighting record, or (quantity, type). */
+  function deerLabel(recOrQty, type) {
+    var c;
+    if (recOrQty && typeof recOrQty === 'object') c = deerCounts(recOrQty);
+    else { c = { buck: 0, doe: 0, fawn: 0, unknown: 0 }; c[DEER_TYPES.indexOf(type) >= 0 ? type : 'unknown'] = recOrQty || 1; }
+    var parts = DEER_TYPES.filter(function (t) { return c[t] > 0; }).map(function (t) {
+      return c[t] + ' ' + (t === 'unknown' ? 'Unknown' : TYPE_NAMES[t][c[t] === 1 ? 0 : 1]);
+    });
+    return parts.length ? parts.join(', ') : '0 Deer';
+  }
+
+  /** Fill in per-type counts for records made before mixed groups existed. */
+  function normalizeSighting(o) {
+    if (!o || typeof o !== 'object') return o;
+    var has = DEER_TYPES.some(function (t) { return typeof o[COUNT_FIELDS[t]] === 'number'; });
+    if (has) return o;
+    var c = deerCounts(o), out = Object.assign({}, o);
+    DEER_TYPES.forEach(function (t) { out[COUNT_FIELDS[t]] = c[t]; });
+    return out;
   }
 
   var WEATHER_CODES = {
@@ -238,7 +276,8 @@
       }
     }
     var c = cache.current;
-    var useCurrent = c && c.time && Math.abs(Date.parse(c.time) - obsMs) <= Math.min(bestDiff, 45 * 60000);
+    // "Current conditions" are preferred when they are close to the observation time.
+    var useCurrent = c && c.time && Math.abs(Date.parse(c.time) - obsMs) <= 45 * 60000;
     var snap;
     if (useCurrent) {
       snap = {
@@ -321,7 +360,16 @@
     } else if (!isDirection(o.heading_direction)) err(e, 'heading_direction invalid');
     else if (o.heading_bearing !== bearingFor(o.heading_direction)) err(e, 'heading_bearing does not match direction');
     if (typeof o.quantity !== 'number' || o.quantity % 1 !== 0 || o.quantity < 1 || o.quantity > 500) err(e, 'quantity must be a whole number 1–500');
-    if (DEER_TYPES.indexOf(o.deer_type) < 0) err(e, 'deer_type invalid');
+    var badCount = DEER_TYPES.some(function (t) {
+      var v = o[COUNT_FIELDS[t]];
+      return typeof v !== 'number' || v % 1 !== 0 || v < 0 || v > 500;
+    });
+    if (badCount) err(e, 'buck/doe/fawn/unknown counts must be whole numbers 0–500');
+    else {
+      var c = deerCounts(o);
+      if (totalOf(c) !== o.quantity) err(e, 'counts do not add up to quantity');
+      if (o.deer_type !== groupType(c)) err(e, 'deer_type does not match counts');
+    }
     return e;
   }
 
@@ -352,6 +400,10 @@
     var fsb = bearingFor(opts.first_seen_direction);
     var hb = opts.heading_direction ? bearingFor(opts.heading_direction) : null;
     var r = distanceRange(opts.distance_range);
+    // counts: {buck, doe, fawn, unknown}; (quantity, deer_type) still accepted for a single type
+    var counts = { buck: 0, doe: 0, fawn: 0, unknown: 0 };
+    if (opts.counts) DEER_TYPES.forEach(function (t) { counts[t] = Math.max(0, Math.floor(opts.counts[t] || 0)); });
+    else counts[DEER_TYPES.indexOf(opts.deer_type) >= 0 ? opts.deer_type : 'unknown'] = opts.quantity || 1;
     var est = estimateSightingLocation(stand.latitude, stand.longitude, fsb, opts.distance_range);
     return {
       id: opts.id || uuid(),
@@ -366,8 +418,12 @@
       distance_max_yards: r ? r.max : null,
       heading_direction: opts.heading_direction || null,
       heading_bearing: hb,
-      quantity: opts.quantity,
-      deer_type: opts.deer_type,
+      quantity: totalOf(counts),
+      deer_type: groupType(counts),
+      buck_count: counts.buck,
+      doe_count: counts.doe,
+      fawn_count: counts.fawn,
+      unknown_count: counts.unknown,
       stand_latitude: stand.latitude,
       stand_longitude: stand.longitude,
       est_latitude: est ? est.lat : null,
@@ -407,7 +463,7 @@
     hunting_sessions: ['id', 'hunter_id', 'stand_id', 'started_at', 'ended_at', 'stand_latitude', 'stand_longitude'],
     deer_sightings: ['id', 'hunter_id', 'stand_id', 'session_id', 'observed_at', 'first_seen_direction',
       'first_seen_bearing', 'distance_range', 'distance_min_yards', 'distance_max_yards', 'heading_direction',
-      'heading_bearing', 'quantity', 'deer_type', 'stand_latitude', 'stand_longitude', 'est_latitude',
+      'heading_bearing', 'quantity', 'deer_type', 'buck_count', 'doe_count', 'fawn_count', 'unknown_count', 'stand_latitude', 'stand_longitude', 'est_latitude',
       'est_longitude', 'weather', 'status', 'voided_at', 'void_reason', 'corrects_id', 'recorded_at'],
     gunshot_reports: ['id', 'hunter_id', 'stand_id', 'session_id', 'observed_at', 'direction', 'bearing',
       'stand_latitude', 'stand_longitude', 'weather', 'status', 'voided_at', 'void_reason', 'corrects_id',
@@ -512,7 +568,7 @@
     }
     var stands = collect(obj.stands, validateStand, 'Stand');
     var sessions = collect(obj.sessions, validateSession, 'Session');
-    var sightings = collect(obj.deer_sightings, validateSighting, 'Deer sighting');
+    var sightings = collect(obj.deer_sightings.map(normalizeSighting), validateSighting, 'Deer sighting');
     var gunshots = collect(obj.gunshot_reports, validateGunshot, 'Gunshot report');
     var hunters = (obj.hunters || []).filter(function (h) {
       return h && isUuid(h.id) && typeof h.display_name === 'string';
@@ -561,6 +617,12 @@
     localDateKey: localDateKey,
     localDayBounds: localDayBounds,
     deerLabel: deerLabel,
+    deerCounts: deerCounts,
+    groupType: groupType,
+    totalOf: totalOf,
+    normalizeSighting: normalizeSighting,
+    COUNT_FIELDS: COUNT_FIELDS,
+    TYPE_NAMES: TYPE_NAMES,
     weatherCodeText: weatherCodeText,
     pickWeather: pickWeather,
     validateStand: validateStand,

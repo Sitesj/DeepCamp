@@ -139,7 +139,8 @@ test('export → import round trip preserves ids, timestamps, bearings', () => {
   const data = sampleData();
   const exp = C.buildExport(data, { type: 'all' }, '2026-11-22T00:00:00.000Z');
   assert.equal(exp.schema, 'deer-camp-hunt-export');
-  assert.equal(exp.schema_version, 1);
+  assert.equal(exp.schema_version, 2);
+  assert.equal(exp.deer_sightings[0].doe_count, 2);
   assert.equal(exp.stands.length, 2);
   assert.equal(exp.deer_sightings.length, 1);
   assert.equal(exp.gunshot_reports.length, 1);
@@ -171,6 +172,16 @@ test('export by date range filters on original observation time', () => {
   const exp = C.buildExport(data, { type: 'range', from: day, to: day });
   assert.equal(exp.gunshot_reports.length, 1);
   assert.equal(exp.deer_sightings.length, C.localDateKey(data.sightings[0].observed_at) === day ? 1 : 0);
+});
+
+test('version-1 export files (no per-type counts) still import', () => {
+  const exp = JSON.parse(JSON.stringify(C.buildExport(sampleData(), { type: 'all' })));
+  exp.schema_version = 1;
+  exp.deer_sightings.forEach((d) => { delete d.buck_count; delete d.doe_count; delete d.fawn_count; delete d.unknown_count; });
+  const v = C.validateImport(exp);
+  assert.ok(v.ok, v.errors.join());
+  assert.deepEqual(v.skipped, []);
+  assert.equal(v.data.sightings[0].doe_count, 2);
 });
 
 test('import validation rejects wrong files and skips bad records', () => {
@@ -218,5 +229,34 @@ test('pickWeather never invents values and labels freshness', () => {
 test('deer labels', () => {
   assert.equal(C.deerLabel(1, 'buck'), '1 Buck');
   assert.equal(C.deerLabel(2, 'doe'), '2 Does');
-  assert.equal(C.deerLabel(3, 'unknown'), '3 Deer (type unknown)');
+  assert.equal(C.deerLabel(1, 'fawn'), '1 Fawn');
+  assert.equal(C.deerLabel(3, 'unknown'), '3 Unknown');
+  assert.equal(C.deerLabel({ quantity: 6, buck_count: 1, doe_count: 3, fawn_count: 2, unknown_count: 0 }), '1 Buck, 3 Does, 2 Fawns');
+});
+
+test('mixed group: one sighting with bucks, does and fawns', () => {
+  const s = C.buildSighting({ hunter_id: HUNTER, stand: STAND, session_id: SESSION, observed_at: '2026-11-20T12:40:00.000Z',
+    first_seen_direction: 'E', distance_range: '25-50', heading_direction: 'N', counts: { doe: 3, buck: 1, fawn: 2 } });
+  assert.deepEqual(C.validateSighting(s), []);
+  assert.equal(s.quantity, 6);
+  assert.equal(s.deer_type, 'mixed');
+  assert.deepEqual([s.buck_count, s.doe_count, s.fawn_count, s.unknown_count], [1, 3, 2, 0]);
+  // a single type is still that type
+  const f = C.buildSighting({ hunter_id: HUNTER, stand: STAND, session_id: SESSION, observed_at: '2026-11-20T12:40:00.000Z',
+    first_seen_direction: 'E', distance_range: '25-50', counts: { fawn: 2 } });
+  assert.equal(f.deer_type, 'fawn');
+  assert.deepEqual(C.validateSighting(f), []);
+  // totals and types must agree
+  assert.ok(C.validateSighting(Object.assign({}, s, { quantity: 5 })).length);
+  assert.ok(C.validateSighting(Object.assign({}, s, { deer_type: 'doe' })).length);
+  assert.ok(C.validateSighting(Object.assign({}, s, { fawn_count: -1 })).length);
+});
+
+test('older single-type records are read as counts', () => {
+  const old = { quantity: 2, deer_type: 'doe' };
+  assert.deepEqual(C.deerCounts(old), { buck: 0, doe: 2, fawn: 0, unknown: 0 });
+  const n = C.normalizeSighting(old);
+  assert.equal(n.doe_count, 2);
+  assert.equal(n.buck_count, 0);
+  assert.equal(old.doe_count, undefined, 'original object not changed');
 });
