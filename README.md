@@ -230,7 +230,7 @@ Imported hunts can be replayed offline.
 
 **☰ → Hunt Replay**
 
-1. Choose **Camp records** or **Imported files**, the **date**, and **All stands** or one stand.
+1. Choose **Camp records** or **Imported files**, the **date**, the **Morning hunt** (midnight–noon), **Evening hunt** (noon–midnight) or **Whole day**, and **All stands** or one stand. Replay opens on the latest hunt of the day that has activity.
 2. Tap **▶ PLAY**. The clock runs from just before the first event of the day to just after the last. Choose the speed (1x, 5x, 10x, 30x, 60x, 300x). **NEXT ⏭** jumps to the next event; drag the timeline to move anywhere; **⟲ RESTART** goes back to the start.
 3. **Deer** appear at their *estimated* first-seen location (stand + reported direction + middle of the distance range) with a short arrow showing the direction they were headed. No path is drawn: Deer Camp only knows where a deer was first seen and which way it was going.
 4. **Gunshots** show a big red **!** above the stand that heard it and a **BANG!** placed toward the edge of the map in the direction the sound came from, with that direction written on it (for example "NW"). The BANG! is the **color of the stand** that heard it. These stay on the map for **30 seconds (real time)** and then fade away; the gunshot stays in the event list. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
@@ -239,6 +239,14 @@ Imported hunts can be replayed offline.
 Events always appear at the time the hunter reported them, never the time they were uploaded.
 
 ---
+
+## Live Map and Deer Heat Map
+
+- The **Live Map** fills the screen and opens on the hunt you are in: **This morning** before noon, **This evening** after.
+- Each stand shows **one 🦌 bubble** with the number of deer reported there. **Tap a bubble** to see that stand's sightings one by one, each with a short arrow showing the way the deer was headed. **SHOW ALL STANDS** goes back. No pinching or zooming is needed.
+- Gunshots show as **one 💥 badge per stand** in the stand's color, with the count and the directions heard (for example "💥 2 · NW, E"). Tap it for the times.
+- **FILTERS** opens one page of big buttons: when (This morning, This evening, Today, Last 7 days, All), which stand, which deer, gunshots on/off, distance ranges, and the map key. A line next to the button always says what is shown.
+- The **Deer Heat Map** uses the same FILTERS page (plus chosen dates).
 
 ## Using Deer Camp in the stand
 

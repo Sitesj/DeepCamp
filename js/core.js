@@ -8,7 +8,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var APP_VERSION = '1.4.1';
+  var APP_VERSION = '1.5.0';
   var EXPORT_SCHEMA = 'deer-camp-hunt-export';
   var EXPORT_SCHEMA_VERSION = 2; // 2: per-type counts (buck/doe/fawn/unknown) in each sighting
 
@@ -206,10 +206,31 @@
     return STAND_COLORS[h % STAND_COLORS.length];
   }
 
+  /**
+   * Colors for a whole list of stands: saved colors first, then each stand
+   * without one gets the next palette color nobody uses yet (steady order by id).
+   */
+  function assignStandColors(stands) {
+    var map = {}, used = {};
+    (stands || []).forEach(function (s) {
+      if (s.color && COLOR_RE.test(s.color)) { map[s.id] = s.color; used[s.color.toLowerCase()] = true; }
+    });
+    var rest = (stands || []).filter(function (s) { return !map[s.id]; })
+      .sort(function (a, b) { return String(a.id) < String(b.id) ? -1 : 1; });
+    var i = 0;
+    rest.forEach(function (s) {
+      while (i < STAND_COLORS.length && used[STAND_COLORS[i].toLowerCase()]) i++;
+      var c = i < STAND_COLORS.length ? STAND_COLORS[i] : standColor(s);
+      map[s.id] = c; used[c.toLowerCase()] = true;
+    });
+    return map;
+  }
+
   /** The first palette color not already used by another active stand. */
   function nextStandColor(stands) {
     var used = {};
-    (stands || []).forEach(function (s) { if (s.is_active !== false) used[standColor(s).toLowerCase()] = true; });
+    var assigned = assignStandColors(stands);
+    (stands || []).forEach(function (s) { if (s.is_active !== false) used[assigned[s.id].toLowerCase()] = true; });
     for (var i = 0; i < STAND_COLORS.length; i++) if (!used[STAND_COLORS[i].toLowerCase()]) return STAND_COLORS[i];
     return STAND_COLORS[(stands || []).length % STAND_COLORS.length];
   }
@@ -644,6 +665,7 @@
     STAND_COLORS: STAND_COLORS,
     standColor: standColor,
     nextStandColor: nextStandColor,
+    assignStandColors: assignStandColors,
     groupType: groupType,
     totalOf: totalOf,
     normalizeSighting: normalizeSighting,

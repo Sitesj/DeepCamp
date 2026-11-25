@@ -414,16 +414,54 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await menu(page, 'map');
     await page.waitForSelector('#liveMap .stand-pin');
     await page.click('#syncStatus');
-    await waitFor(async () => (await page.locator('#liveMap .deer-pin').count()) >= 4, 10000, 'deer pins');
+    // opens on the current hunt (morning before noon, evening after)
+    const hunt = await page.evaluate(() => (new Date().getHours() < 12 ? 'This morning' : 'This evening'));
+    assert((await page.textContent('#lmSummary')).startsWith(hunt), 'opens on ' + hunt + ': ' + await page.textContent('#lmSummary'));
+    // zoomed out: one deer bubble per stand, no individual pins, no gunshot lines
+    await waitFor(async () => (await page.locator('#liveMap .deer-bubble').count()) === 2, 10000, 'one deer bubble per stand with deer');
+    assert((await page.locator('#liveMap .deer-pin').count()) === 0, 'individual deer hidden until a bubble is tapped');
+    assert((await page.locator('#liveMap path[stroke-dasharray]').count()) === 0, 'no gunshot lines on the live map');
+    const badges = await page.locator('#liveMap .gun-badge').allTextContents();
+    assert(badges.length === 2 && badges.some((b) => /💥 \d+ · /.test(b) && b.includes('NW')), 'one gunshot badge per stand with directions: ' + badges);
     const names = await page.locator('#liveMap .stand-pin .nm').allTextContents();
     assert(['North Ridge', 'Creek Stand', 'South Woods'].every((n) => names.includes(n)), 'all stands on one map: ' + names);
     const colors = await page.locator('#liveMap .stand-pin .tri').evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor));
     assert(new Set(colors).size === colors.length, 'each stand has its own color: ' + colors);
-    assert((await page.locator('#liveMap path[stroke-dasharray]').count()) >= 1, 'dashed gunshot direction lines');
+    const mapH = await page.locator('#liveMap').evaluate((e) => e.getBoundingClientRect().height);
+    assert(mapH >= 0.6 * 667 - 200 && mapH > 400, 'map uses most of the screen: ' + mapH);
     await shot(page, '09-live-map');
+    // tap a bubble: that stand's sightings appear one by one, with SHOW ALL STANDS to go back
+    const ridgeBubble = page.locator('#liveMap .deer-bubble').first();
+    await ridgeBubble.click();
+    await waitFor(async () => (await page.locator('#liveMap .deer-pin').count()) >= 1, 5000, 'pins after tapping a bubble');
+    assert(await page.isVisible('#lmAll'), 'SHOW ALL STANDS button appears');
+    await shot(page, '09b-live-map-stand');
+    await page.click('#lmAll');
+    await waitFor(async () => (await page.locator('#liveMap .deer-pin').count()) === 0 && !(await page.isVisible('#lmAll')), 5000, 'back to all stands');
+    // FILTERS: big buttons; pick Does only and one stand
+    await page.click('#lmFilterBtn');
+    await page.waitForSelector('#filterSheet.open');
+    await shot(page, '09c-filters');
+    assert((await page.locator('#fsBody [data-time]').count()) === 5, 'five time choices');
+    await page.locator('#fsBody [data-deer="buck"]').click();
+    await page.locator('#fsBody [data-deer="fawn"]').click();
+    await page.locator('#fsBody [data-deer="unknown"]').click();
+    await page.locator('#fsBody [data-stand]', { hasText: 'North Ridge' }).click();
+    await page.click('#fsDone');
+    await waitFor(async () => (await page.textContent('#lmSummary')).includes('North Ridge · Does'), 5000, 'summary updates');
+    await waitFor(async () => (await page.locator('#liveMap .deer-pin').count()) >= 1, 5000, 'chosen stand opens');
+    const pinTypes = await page.locator('#liveMap .deer-pin').evaluateAll((els) => els.map((e) => e.className));
+    assert(pinTypes.every((c) => /doe|mixed/.test(c)), 'only sightings with does: ' + pinTypes);
+    await page.click('#lmAll');
+    await page.click('#lmFilterBtn');
+    await page.locator('#fsBody [data-time="all"]').click();
+    for (const t of ['buck', 'fawn', 'unknown']) await page.locator('#fsBody [data-deer="' + t + '"]').click();
+    await page.click('#fsDone');
+    await waitFor(async () => (await page.textContent('#lmSummary')).startsWith('All records · All stands · All deer'), 5000, 'reset filters');
     await menu(page, 'heat');
     await page.waitForSelector('#heatMap canvas.leaflet-heatmap-layer');
     assert((await page.textContent('#hmCount')).includes('sighting report'), 'heat count');
+    assert((await page.textContent('#hmSummary')).startsWith('All records'), 'heat map opens on all records');
     await shot(page, '10-heat-map');
   });
 
@@ -445,7 +483,7 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert((await page.locator('#replayMap path[stroke-dasharray]').count()) === 0, 'no line connects the stand and the BANG!');
     const bangs = await page.locator('#replayMap .bang').evaluateAll((els) => els.map((e) => ({
       dir: e.querySelector('.bang-dir') && e.querySelector('.bang-dir').textContent, bg: e.style.getPropertyValue('--bang-bg'), stand: e.dataset.stand })));
-    const standColors = await page.evaluate(() => Object.fromEntries(window.DeerCampApp.Replay.allStands.map((x) => [x.id, window.DeerCore.standColor(x)])));
+    const standColors = await page.evaluate(() => Object.fromEntries(window.DeerCampApp.Replay.allStands.map((x) => [x.id, window.DeerCampApp.standColorFor(x)])));
     assert(bangs.length >= 1 && bangs.every((b) => window_dirs().includes(b.dir)), 'BANG! shows the direction: ' + JSON.stringify(bangs));
     assert(bangs.every((b) => b.bg && b.bg.toLowerCase() === standColors[b.stand].toLowerCase()), 'BANG! is the color of its stand');
     await waitFor(() => page.evaluate(() => !window.DeerCampApp.Replay.playing), 20000, 'replay end');

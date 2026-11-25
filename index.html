@@ -238,6 +238,36 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .map-wrap { position: relative; }
 .map { width: 100%; height: 58vh; height: 58dvh; background: #3a3f36; }
 .map { scroll-margin-top: calc(var(--hdr) + env(safe-area-inset-top)); }
+.map-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fff; border-bottom: 1px solid var(--line); }
+.map-filter-btn { width: auto; margin: 0; min-height: 52px; padding: 8px 16px; flex: 0 0 auto; }
+.map-summary { font-weight: 700; font-size: .95rem; line-height: 1.25; }
+.map.map-full { height: calc(100vh - 190px); height: calc(100dvh - 190px); min-height: 320px; }
+.map-count { padding: 6px 12px 10px; margin: 0; }
+.map-allbtn {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 950;
+  min-height: 52px; padding: 8px 18px; border-radius: 26px; border: 3px solid #fff; background: var(--char); color: #fff;
+  font-weight: 900; font-size: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.5); white-space: nowrap;
+}
+.deer-bubble {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer;
+  background: #fff; color: #111; border: 4px solid var(--green); border-radius: 22px; padding: 4px 12px;
+  font-weight: 900; font-size: 17px; box-shadow: 0 2px 6px rgba(0,0,0,.6); transform: translate(4px, calc(-100% - 16px));
+}
+.gun-badge {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer;
+  color: #fff; border: 3px solid #fff; border-radius: 22px; padding: 4px 10px;
+  font-weight: 900; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,.6); transform: translate(calc(-100% - 4px), calc(-100% - 16px));
+  text-shadow: 0 1px 1px #000;
+}
+.fs-section { margin: 4px 0 18px; }
+.fs-section h3 { margin: 6px 0 8px; font-size: 1.2rem; }
+.fs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fs-grid .btn { margin: 0; min-height: 56px; font-size: 1.05rem; }
+.fs-grid .btn.wide { grid-column: 1 / -1; }
+.btn[aria-pressed="true"] { background: var(--green); border-color: var(--green-d); color: #fff; }
+.btn[aria-pressed="true"]::before { content: "✔ "; }
+.fs-key { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; font-size: 1rem; }
+.fs-key .sw { width: 20px; height: 20px; }
 .map-note {
   position: absolute; left: 8px; right: 8px; bottom: 30px; z-index: 900; background: rgba(255,255,255,.94);
   border-radius: 10px; padding: 6px 8px; font-size: 13px; font-weight: 600; line-height: 1.3; pointer-events: none;
@@ -267,6 +297,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .deer-pin.buck { background: var(--buck); } .deer-pin.doe { background: var(--doe); color: #111; } .deer-pin.unknown { background: var(--unk); }
 .deer-pin.fawn { background: var(--fawn); color: #111; } .deer-pin.mixed { background: var(--mixed); }
 .sw-buck { background: var(--buck); } .sw-doe { background: var(--doe); } .sw-fawn { background: var(--fawn); } .sw-unknown { background: var(--unk); }
+.travel-arrow { pointer-events: none; }
 .deer-pin.latest { box-shadow: 0 0 0 4px var(--orange), 0 1px 4px rgba(0,0,0,.7); }
 .gun-alert {
   width: 40px; height: 40px; border-radius: 50%; background: var(--red); color: #fff; border: 3px solid #fff;
@@ -416,60 +447,30 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 
   <!-- Live map -->
   <section class="screen map-screen" id="screen-map">
-    <div class="filters">
-      <div class="row">
-        <select id="lmStand" aria-label="Stand filter"></select>
-        <select id="lmTime" aria-label="Time filter">
-          <option value="today">Today</option><option value="7d">Last 7 days</option><option value="all">All records</option>
-        </select>
-      </div>
-      <div class="chips" id="lmTypes">
-        <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
-        <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
-        <button class="chip" data-type="fawn" aria-pressed="true">Fawn</button>
-        <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
-        <button class="chip" data-type="gunshot" aria-pressed="true">Gunshots</button>
-        <button class="chip" data-type="sector" aria-pressed="false">Distance range</button>
-      </div>
+    <div class="map-bar">
+      <button class="btn btn-dark map-filter-btn" id="lmFilterBtn" aria-haspopup="dialog">FILTERS</button>
+      <div class="map-summary" id="lmSummary" aria-live="polite"></div>
     </div>
-    <div class="map-wrap"><div class="map" id="liveMap"></div><div class="map-note hidden" id="lmNote"></div></div>
-    <div class="legend">
-      <span><i class="sw" style="background:#1f6fd1;border-radius:3px;transform:rotate(45deg)"></i>Stand (each has its own color)</span>
-      <span><i class="sw" style="background:var(--buck)"></i>Buck</span>
-      <span><i class="sw" style="background:var(--doe)"></i>Doe</span>
-      <span><i class="sw" style="background:var(--fawn)"></i>Fawn</span>
-      <span><i class="sw" style="background:var(--unk)"></i>Unknown</span>
-      <span><i class="sw" style="background:var(--mixed)"></i>Mixed group</span>
-      <span><b style="color:var(--red)">- - →</b> Gunshot heard from (direction only)</span>
+    <div class="map-wrap">
+      <div class="map map-full" id="liveMap"></div>
+      <button class="map-allbtn hidden" id="lmAll">SHOW ALL STANDS</button>
+      <div class="map-note hidden" id="lmNote"></div>
     </div>
-    <p class="small muted" style="padding:0 12px" id="lmCount"></p>
+    <p class="small muted map-count" id="lmCount"></p>
   </section>
 
   <!-- Heat map -->
   <section class="screen map-screen" id="screen-heat">
-    <div class="filters">
-      <div class="row">
-        <select id="hmStand" aria-label="Stand filter"></select>
-        <select id="hmTime" aria-label="Time filter">
-          <option value="today">Today</option><option value="7d">Last 7 days</option>
-          <option value="all" selected>All records</option><option value="custom">Custom dates…</option>
-        </select>
-      </div>
-      <div class="row hidden" id="hmCustom">
-        <label class="small" style="flex:1">From<input class="big" type="date" id="hmFrom"></label>
-        <label class="small" style="flex:1">To<input class="big" type="date" id="hmTo"></label>
-      </div>
-      <div class="chips" id="hmTypes">
-        <button class="chip" data-type="buck" aria-pressed="true">Buck</button>
-        <button class="chip" data-type="doe" aria-pressed="true">Doe</button>
-        <button class="chip" data-type="fawn" aria-pressed="true">Fawn</button>
-        <button class="chip" data-type="unknown" aria-pressed="true">Unknown</button>
-        <button class="chip" data-type="weight" aria-pressed="true">Weight by number of deer</button>
-      </div>
+    <div class="map-bar">
+      <button class="btn btn-dark map-filter-btn" id="hmFilterBtn" aria-haspopup="dialog">FILTERS</button>
+      <div class="map-summary" id="hmSummary" aria-live="polite"></div>
     </div>
-    <div class="map-wrap"><div class="map" id="heatMap"></div><div class="map-note hidden" id="hmNote"></div></div>
-    <p class="small" style="padding:8px 12px 0"><b>Note:</b> the heat map shows where hunters <i>reported</i> deer (estimated from direction and distance). It is not a count of how many deer live there — the same deer may be reported more than once.</p>
-    <p class="small muted" style="padding:0 12px" id="hmCount"></p>
+    <div class="map-wrap">
+      <div class="map map-full" id="heatMap"></div>
+      <button class="map-allbtn" id="hmAll">SHOW ALL STANDS</button>
+      <div class="map-note hidden" id="hmNote"></div>
+    </div>
+    <p class="small map-count"><b>Note:</b> the heat map shows where hunters <i>reported</i> deer (estimated from direction and distance). It is not a count of how many deer live there — the same deer may be reported more than once. <span class="muted" id="hmCount"></span></p>
   </section>
 
   <!-- Replay -->
@@ -480,6 +481,9 @@ label.field input, label.field select, label.field textarea, select.big, input.b
           <option value="camp">Camp records</option><option value="import">Imported files</option>
         </select>
         <select id="rpDate" aria-label="Date"></select>
+        <select id="rpPart" aria-label="Morning or evening">
+          <option value="am">Morning hunt</option><option value="pm">Evening hunt</option><option value="day">Whole day</option>
+        </select>
         <select id="rpStand" aria-label="Stand filter"></select>
       </div>
       <div class="chips">
@@ -664,6 +668,16 @@ label.field input, label.field select, label.field textarea, select.big, input.b
     <button class="btn btn-primary btn-big" id="cfOk">OK</button>
     <button class="btn" id="cfUndo">UNDO — THIS WAS A MISTAKE</button>
   </div>
+</div>
+
+<!-- Map filters -->
+<div class="overlay" id="filterSheet" role="dialog" aria-modal="true" aria-labelledby="fsTitle">
+  <div class="ov-head">
+    <span style="min-width:88px"></span>
+    <div class="title" id="fsTitle">FILTERS</div>
+    <button id="fsClose">DONE</button>
+  </div>
+  <div class="ov-body" id="fsBody"></div>
 </div>
 
 <!-- Menu -->
@@ -1201,7 +1215,8 @@ function onDataChanged() {
   if (S.screen === 'map') LiveMap.render();
   if (S.screen === 'heat') HeatMap.render();
   if (S.screen === 'activity') renderActivity();
-  if (S.screen === 'replay' && !Replay.playing) Replay.reload(true);
+  // don't refresh the replay under the hunter while it is playing or showing gunshots
+  if (S.screen === 'replay' && !Replay.playing && ![...Replay.shown.values()].some((v) => v.kind === 'gunshot')) Replay.reload(true);
   if (S.screen === 'stand') renderStandPicker();
 }
 
@@ -1209,6 +1224,11 @@ function onDataChanged() {
 async function loadCatalog() {
   S.stands = (await DB.all('stands')).sort((a, b) => a.name.localeCompare(b.name));
   S.hunters = await DB.all('hunters');
+  S.standColors = C.assignStandColors(S.stands);
+}
+/** Each stand's color, unique across the camp's stands. */
+function standColorFor(stand) {
+  return (stand && S.standColors && S.standColors[stand.id]) || C.standColor(stand);
 }
 const activeStands = () => S.stands.filter((s) => s.is_active !== false);
 
@@ -1777,7 +1797,14 @@ async function importData() {
   rows.forEach((r) => { out[r.kind].push(r.rec); });
   return out;
 }
+/** Morning hunt = midnight to noon, evening hunt = noon to midnight (phone's time zone). */
+const isMorning = (ms) => new Date(ms).getHours() < 12;
+const currentHunt = () => (isMorning(Date.now()) ? 'morning' : 'evening');
 function timeFilter(kind, from, to) {
+  if (kind === 'morning' || kind === 'evening') {
+    const b = C.localDayBounds(todayKey()), noon = b.start + 12 * 3600000;
+    return kind === 'morning' ? (t) => t >= b.start && t < noon : (t) => t >= noon && t < b.end;
+  }
   if (kind === 'today') { const b = C.localDayBounds(todayKey()); return (t) => t >= b.start && t < b.end; }
   if (kind === '7d') { const start = C.localDayBounds(todayKey()).end - 7 * 86400000; return (t) => t >= start; }
   if (kind === 'custom' && from && to) { const s = C.localDayBounds(from).start, e = C.localDayBounds(to).end; return (t) => t >= s && t < e; }
@@ -1835,11 +1862,11 @@ const MapKit = {
     const pts = stands.map((s) => [s.latitude, s.longitude]).concat(extra || []);
     if (!pts.length) { map.setView([39.5, -95], 4); return; }
     if (pts.length === 1) { map.setView(pts[0], 17); return; }
-    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 18 });
+    map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 17 });
   },
   standMarker(s, dim) {
     return L.marker([s.latitude, s.longitude], {
-      icon: L.divIcon({ className: '', html: '<div class="stand-pin' + (dim ? ' dim' : '') + '"><div class="tri" style="background:' + C.standColor(s) + '"></div><div class="nm" style="border-bottom:4px solid ' + C.standColor(s) + '">' + esc(s.name) + '</div></div>', iconSize: [120, 56], iconAnchor: [60, 14] }),
+      icon: L.divIcon({ className: '', html: '<div class="stand-pin' + (dim ? ' dim' : '') + '"><div class="tri" style="background:' + standColorFor(s) + '"></div><div class="nm" style="border-bottom:4px solid ' + standColorFor(s) + '">' + esc(s.name) + '</div></div>', iconSize: [120, 56], iconAnchor: [60, 14] }),
       zIndexOffset: 500, keyboard: false
     }).bindPopup('<b>' + esc(s.name) + '</b><br>' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? '<br>' + esc(s.description) : ''));
   },
@@ -1856,20 +1883,22 @@ const MapKit = {
     return p ? [p.lat, p.lng] : [rec.stand_latitude, rec.stand_longitude];
   },
   /** Short arrow (fixed 30 m) showing the reported travel direction. Not a path. */
+  /**
+   * The way the deer was headed: a short arrow pointing out from the deer
+   * marker. Fixed size on screen, so it reads the same at every zoom. It shows
+   * direction only; no path is drawn.
+   */
   travelArrow(rec) {
     if (rec.heading_bearing == null) return null;
-    const [lat, lng] = MapKit.deerPos(rec);
-    const len = 30;
-    const end = C.destinationPoint(lat, lng, rec.heading_bearing, len);
-    const l = C.destinationPoint(end.lat, end.lng, rec.heading_bearing + 150, 10);
-    const r = C.destinationPoint(end.lat, end.lng, rec.heading_bearing - 150, 10);
-    const color = rec.deer_type === 'doe' || rec.deer_type === 'fawn' ? '#ffd28a' : '#ffffff';
-    return L.layerGroup([
-      L.polyline([[lat, lng], [end.lat, end.lng]], { color: '#000', weight: 7, opacity: .55 }),
-      L.polyline([[l.lat, l.lng], [end.lat, end.lng], [r.lat, r.lng]], { color: '#000', weight: 7, opacity: .55 }),
-      L.polyline([[lat, lng], [end.lat, end.lng]], { color, weight: 4 }),
-      L.polyline([[l.lat, l.lng], [end.lat, end.lng], [r.lat, r.lng]], { color, weight: 4 })
-    ]);
+    const fill = rec.deer_type === 'doe' || rec.deer_type === 'fawn' ? '#ffd28a' : '#ffffff';
+    const svg = '<svg width="120" height="120" viewBox="-60 -60 120 120" aria-hidden="true" style="transform:rotate(' + rec.heading_bearing + 'deg)">' +
+      '<line x1="0" y1="-17" x2="0" y2="-40" stroke="#000" stroke-width="8"/>' +
+      '<line x1="0" y1="-17" x2="0" y2="-40" stroke="' + fill + '" stroke-width="4"/>' +
+      '<polygon points="0,-56 -10,-38 10,-38" fill="' + fill + '" stroke="#000" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+    return L.marker(MapKit.deerPos(rec), {
+      icon: L.divIcon({ className: 'travel-arrow', html: svg, iconSize: [120, 120], iconAnchor: [60, 60] }),
+      interactive: false, keyboard: false, zIndexOffset: 750
+    });
   },
   sector(rec) {
     const pts = C.uncertaintySector(rec.stand_latitude, rec.stand_longitude, rec.first_seen_bearing, rec.distance_range);
@@ -1894,56 +1923,157 @@ function standsForRecords(stands, recs) {
   return Array.from(map.values());
 }
 
+// ======================================================= Map filters (one big-button panel)
+const TIME_LABELS = { morning: 'This morning', evening: 'This evening', today: 'Today', '7d': 'Last 7 days', all: 'All records', custom: 'Chosen dates' };
+const TYPE_LABELS = { buck: 'Bucks', doe: 'Does', fawn: 'Fawns', unknown: 'Unknown' };
+
+function newMapFilters(time) {
+  return { time, stand: '', types: new Set(C.DEER_TYPES), gunshots: true, ranges: false, weight: true, from: '', to: '' };
+}
+
+function filterSummary(f, opts) {
+  const parts = [TIME_LABELS[f.time] + (f.time === 'custom' && f.from && f.to ? ' (' + fmtDateKey(f.from) + ' – ' + fmtDateKey(f.to) + ')' : '')];
+  parts.push(f.stand ? standName(f.stand) : 'All stands');
+  parts.push(f.types.size === C.DEER_TYPES.length ? 'All deer' : (f.types.size ? C.DEER_TYPES.filter((t) => f.types.has(t)).map((t) => TYPE_LABELS[t]).join(', ') : 'No deer'));
+  if (opts.gunshots && !f.gunshots) parts.push('No gunshots');
+  return parts.join(' · ');
+}
+
+const FilterSheet = {
+  f: null, opts: null, onDone: null,
+  /** opts: {gunshots, ranges, weight, custom, key} — which choices this map offers. */
+  open(f, opts, onDone) {
+    this.f = f; this.opts = opts; this.onDone = onDone;
+    this.render();
+    $('#filterSheet').classList.add('open');
+  },
+  close() {
+    $('#filterSheet').classList.remove('open');
+    if (this.onDone) this.onDone();
+  },
+  render() {
+    const f = this.f, o = this.opts;
+    const btn = (attr, val, label, on, wide) => '<button class="btn' + (wide ? ' wide' : '') + '" ' + attr + '="' + esc(val) + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + label + '</button>';
+    const times = ['morning', 'evening', 'today', '7d', 'all'].concat(o.custom ? ['custom'] : []);
+    let h = '<div class="fs-section"><h3>When?</h3><div class="fs-grid">' + times.map((t) => btn('data-time', t, TIME_LABELS[t], f.time === t, t === 'all' && !o.custom)).join('') + '</div>';
+    if (o.custom && f.time === 'custom') {
+      h += '<div class="btn-row" style="margin-top:8px"><label class="field">From<input type="date" id="fsFrom" value="' + esc(f.from) + '"></label>' +
+        '<label class="field">To<input type="date" id="fsTo" value="' + esc(f.to) + '"></label></div>';
+    }
+    h += '</div><div class="fs-section"><h3>Which stand?</h3><div class="fs-grid">' + btn('data-stand', '', 'All stands', !f.stand, true) +
+      activeStands().map((x) => btn('data-stand', x.id, '<i class="sw" style="background:' + standColorFor(x) + ';border-radius:4px;transform:rotate(45deg);margin-right:6px"></i>' + esc(x.name), f.stand === x.id)).join('') + '</div></div>';
+    h += '<div class="fs-section"><h3>Which deer?</h3><div class="fs-grid">' + C.DEER_TYPES.map((t) => btn('data-deer', t, TYPE_LABELS[t], f.types.has(t))).join('') + '</div></div>';
+    const extras = [];
+    if (o.gunshots) extras.push(btn('data-extra', 'gunshots', 'Gunshots', f.gunshots, true));
+    if (o.ranges) extras.push(btn('data-extra', 'ranges', 'Distance ranges', f.ranges, true));
+    if (o.weight) extras.push(btn('data-extra', 'weight', 'Count every deer in a group', f.weight, true));
+    if (extras.length) h += '<div class="fs-section"><h3>Also show</h3><div class="fs-grid">' + extras.join('') + '</div></div>';
+    h += '<button class="btn btn-primary btn-big" id="fsDone">SHOW ON MAP</button>';
+    if (o.key) h += '<div class="fs-section"><h3>Map key</h3>' + o.key + '</div>';
+    $('#fsBody').innerHTML = h;
+    const body = $('#fsBody');
+    $$('[data-time]', body).forEach((b) => b.onclick = () => {
+      f.time = b.dataset.time;
+      if (f.time === 'custom' && !f.from) { f.from = C.localDateKey(new Date(Date.now() - 30 * 86400000).toISOString()); f.to = todayKey(); }
+      this.render();
+    });
+    $$('[data-stand]', body).forEach((b) => b.onclick = () => { f.stand = b.dataset.stand; this.render(); });
+    $$('[data-deer]', body).forEach((b) => b.onclick = () => { const t = b.dataset.deer; if (f.types.has(t)) f.types.delete(t); else f.types.add(t); this.render(); });
+    $$('[data-extra]', body).forEach((b) => b.onclick = () => { f[b.dataset.extra] = !f[b.dataset.extra]; this.render(); });
+    if ($('#fsFrom')) { $('#fsFrom').onchange = () => { f.from = $('#fsFrom').value; }; $('#fsTo').onchange = () => { f.to = $('#fsTo').value; }; }
+    $('#fsDone').onclick = () => this.close();
+  }
+};
+
+const MAP_KEY = '<div class="fs-key">' +
+  '<i class="sw" style="background:#1f6fd1;border-radius:4px;transform:rotate(45deg)"></i><span>A stand (each stand has its own color)</span>' +
+  '<span class="deer-bubble" style="transform:none;font-size:14px;padding:2px 8px">🦌 5</span><span>Deer reported at that stand. Tap it to see each sighting.</span>' +
+  '<span class="gun-badge" style="transform:none;font-size:13px;background:#1f6fd1">💥 2 · NW</span><span>Gunshots heard at that stand, and the direction they came from (direction only, not where the shot was)</span>' +
+  '<i class="sw" style="background:var(--buck)"></i><span>Buck</span><i class="sw" style="background:var(--doe)"></i><span>Doe</span>' +
+  '<i class="sw" style="background:var(--fawn)"></i><span>Fawn</span><i class="sw" style="background:var(--unk)"></i><span>Unknown</span>' +
+  '<i class="sw" style="background:var(--mixed)"></i><span>Mixed group</span>' +
+  '<span style="font-weight:900">→</span><span>The way the deer was headed</span></div>';
+
 // ======================================================= Live map
 const LiveMap = {
-  map: null, layer: null, fitted: false, poll: null,
+  map: null, layer: null, poll: null, f: null, expanded: null, fitKey: null,
   init() {
     if (this.map) return;
     this.map = MapKit.create($('#liveMap'), $('#lmNote'));
     this.layer = L.layerGroup().addTo(this.map);
-    $('#lmStand').onchange = () => { this.fitted = false; this.render(); };
-    $('#lmTime').onchange = () => this.render();
-    bindChips($('#lmTypes'), () => this.render());
+    this.f = newMapFilters(currentHunt());
+    $('#lmFilterBtn').onclick = () => FilterSheet.open(this.f, { gunshots: true, ranges: true, key: MAP_KEY }, () => { this.expanded = this.f.stand || null; this.fitKey = null; this.render(); });
+    $('#lmAll').onclick = () => { this.expanded = null; this.f.stand = ''; this.fitKey = null; this.render(); };
   },
   show() {
+    const first = !this.map;
     this.init();
-    fillStandSelect($('#lmStand'), activeStands(), true);
+    if (!first && this.shownAt && Date.now() - this.shownAt > 3 * 3600000) { this.f.time = currentHunt(); this.expanded = null; this.fitKey = null; }
+    this.shownAt = Date.now();
     setTimeout(() => { this.map.invalidateSize(); this.render(); }, 30);
     clearInterval(this.poll);
     this.poll = setInterval(() => { if (S.screen !== 'map') { clearInterval(this.poll); return; } if (isCloudId()) Sync.run('poll'); }, 60000);
   },
+  /** Tap on a stand's deer bubble: show that stand's sightings one by one. */
+  expand(standId) { this.expanded = standId; this.fitKey = null; this.render(); },
   async render() {
     if (!this.map) return;
+    const f = this.f;
+    $('#lmSummary').textContent = filterSummary(f, { gunshots: true });
     const d = await campData();
-    const types = chipSet($('#lmTypes'));
-    const standSel = $('#lmStand').value;
-    const tf = timeFilter($('#lmTime').value);
-    const ok = (r) => r.status !== 'voided' && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel);
-    const sightings = d.sightings.filter((r) => ok(r) && hasTypes(r, types)).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
-    const gunshots = types.has('gunshot') ? d.gunshots.filter(ok) : [];
+    const tf = timeFilter(f.time, f.from, f.to);
+    const ok = (r) => r.status !== 'voided' && tf(Date.parse(r.observed_at)) && (!f.stand || r.stand_id === f.stand);
+    const sightings = d.sightings.filter((r) => ok(r) && hasTypes(r, f.types)).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const gunshots = f.gunshots ? d.gunshots.filter(ok).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at)) : [];
+    const sel = C.DEER_TYPES.filter((t) => f.types.has(t));
     this.layer.clearLayers();
     const stands = standsForRecords(activeStands(), sightings.concat(gunshots));
-    stands.forEach((s) => this.layer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
-    const showSector = types.has('sector');
-    sightings.forEach((r, i) => {
-      if (showSector) this.layer.addLayer(MapKit.sector(r));
-      const a = MapKit.travelArrow(r); if (a) this.layer.addLayer(a);
-      this.layer.addLayer(MapKit.deerMarker(r, i === sightings.length - 1).bindPopup(MapKit.deerPopup(r)));
+    const byStand = (list) => { const m = new Map(); list.forEach((r) => { if (!m.has(r.stand_id)) m.set(r.stand_id, []); m.get(r.stand_id).push(r); }); return m; };
+    const deerAt = byStand(sightings), gunsAt = byStand(gunshots);
+    const open = this.expanded || f.stand || null;
+    stands.forEach((st) => {
+      this.layer.addLayer(MapKit.standMarker(st, open && st.id !== open));
+      const deer = deerAt.get(st.id) || [];
+      if (deer.length && st.id === open) {
+        deer.forEach((r, i) => {
+          if (f.ranges) this.layer.addLayer(MapKit.sector(r));
+          const a = MapKit.travelArrow(r); if (a) this.layer.addLayer(a);
+          this.layer.addLayer(MapKit.deerMarker(r, i === deer.length - 1).bindPopup(MapKit.deerPopup(r)));
+        });
+      } else if (deer.length) {
+        const n = deer.reduce((k, r) => k + C.totalOf(C.deerCounts(r), sel), 0);
+        const m = L.marker([st.latitude, st.longitude], {
+          icon: L.divIcon({ className: '', html: '<div class="deer-bubble" style="border-color:' + standColorFor(st) + '" role="button" aria-label="' + n + ' deer at ' + esc(st.name) + '. Tap to see each sighting.">🦌 ' + n + '</div>', iconSize: null, iconAnchor: [0, 0] }),
+          zIndexOffset: 700, keyboard: true
+        });
+        m.on('click', () => this.expand(st.id));
+        this.layer.addLayer(m);
+      }
+      const guns = gunsAt.get(st.id) || [];
+      if (guns.length) {
+        const dirs = [...new Set(guns.map((g) => g.direction))];
+        const label = '💥 ' + guns.length + ' · ' + (dirs.length > 3 ? dirs.slice(0, 3).join(', ') + '…' : dirs.join(', '));
+        this.layer.addLayer(L.marker([st.latitude, st.longitude], {
+          icon: L.divIcon({ className: '', html: '<div class="gun-badge" style="background:' + standColorFor(st) + '">' + esc(label) + '</div>', iconSize: null, iconAnchor: [0, 0] }),
+          zIndexOffset: 650
+        }).bindPopup('<b>Gunshots heard at ' + esc(st.name) + '</b><br>' + guns.map((g) => fmtTime(g.observed_at) + ' — from the <b>' + g.direction + '</b> — ' + esc(hunterName(g.hunter_id))).join('<br>') +
+          '<br><i>Direction only — not where the shot was.</i>'));
+      }
     });
-    gunshots.forEach((g) => {
-      const end = C.destinationPoint(g.stand_latitude, g.stand_longitude, g.bearing, 400);
-      this.layer.addLayer(L.polyline([[g.stand_latitude, g.stand_longitude], [end.lat, end.lng]], { color: '#ff2a1a', weight: 4, dashArray: '10 8' })
-        .bindPopup('<b>Gunshot heard</b> from the ' + g.direction + '<br>' + fmtDay(g.observed_at) + ' ' + fmtTime(g.observed_at) + '<br>' + esc(hunterName(g.hunter_id)) + ' — ' + esc(standName(g.stand_id)) + '<br><i>Direction only — not the shot location.</i>'));
-      this.layer.addLayer(L.marker([g.stand_latitude, g.stand_longitude], { icon: MapKit.gunAlertIcon('small'), interactive: false, zIndexOffset: 900 }));
-    });
-    if (!this.fitted) {
-      const fitStands = standSel ? stands.filter((s) => s.id === standSel) : stands;
-      MapKit.fit(this.map, fitStands);
-      this.fitted = true;
+    const key = (open || 'all') + '|' + stands.length;
+    if (this.fitKey !== key) {
+      if (open) {
+        const st = stands.find((x) => x.id === open);
+        MapKit.fit(this.map, st ? [st] : stands, (deerAt.get(open) || []).map((r) => MapKit.deerPos(r)));
+      } else MapKit.fit(this.map, stands);
+      this.fitKey = key;
     }
-    const online = navigator.onLine;
-    $('#lmCount').textContent = sightings.length + ' deer sighting(s), ' + gunshots.length + ' gunshot report(s) shown. Times are when the hunter reported them.';
-    if (!online) MapKit.note($('#lmNote'), 'Offline: showing records saved on this phone. Other hunters’ latest activity may be missing until you have service.');
+    $('#lmAll').classList.toggle('hidden', !open);
+    const deerTotal = sightings.reduce((k, r) => k + C.totalOf(C.deerCounts(r), sel), 0);
+    $('#lmCount').textContent = (sightings.length || gunshots.length)
+      ? sightings.length + ' sighting(s) (' + deerTotal + ' deer) and ' + gunshots.length + ' gunshot(s). ' + (open ? 'Tap a deer for details.' : 'Tap a 🦌 bubble to see each sighting.')
+      : 'Nothing reported for ' + TIME_LABELS[f.time].toLowerCase() + '. Tap FILTERS to look at another time.';
+    if (!navigator.onLine) MapKit.note($('#lmNote'), 'Offline: showing records saved on this phone. Other hunters’ latest activity may be missing until you have service.');
     else if (!isCloudId()) MapKit.note($('#lmNote'), 'Phone-only mode: only records from this phone are shown.');
     else if (!$('#lmNote').textContent.startsWith('Map pictures')) MapKit.note($('#lmNote'), '');
   }
@@ -1951,41 +2081,37 @@ const LiveMap = {
 
 // ======================================================= Heat map
 const HeatMap = {
-  map: null, heat: null, layer: null, fitted: false,
+  map: null, heat: null, layer: null, f: null, fitKey: null,
   init() {
     if (this.map) return;
     this.map = MapKit.create($('#heatMap'), $('#hmNote'));
     this.layer = L.layerGroup().addTo(this.map);
-    $('#hmStand').onchange = () => { this.fitted = false; this.render(); };
-    $('#hmTime').onchange = () => { $('#hmCustom').classList.toggle('hidden', $('#hmTime').value !== 'custom'); this.render(); };
-    $('#hmFrom').onchange = $('#hmTo').onchange = () => this.render();
-    bindChips($('#hmTypes'), () => this.render());
-    const t = todayKey();
-    $('#hmFrom').value = C.localDateKey(new Date(Date.now() - 30 * 86400000).toISOString());
-    $('#hmTo').value = t;
+    this.f = newMapFilters('all');
+    $('#hmFilterBtn').onclick = () => FilterSheet.open(this.f, { weight: true, custom: true }, () => { this.fitKey = null; this.render(); });
+    $('#hmAll').onclick = () => { this.f.stand = ''; this.fitKey = null; this.render(); };
   },
   show() {
     this.init();
-    fillStandSelect($('#hmStand'), activeStands(), true);
     setTimeout(() => { this.map.invalidateSize(); this.render(); }, 30);
   },
   async render() {
     if (!this.map) return;
+    const f = this.f;
+    $('#hmSummary').textContent = filterSummary(f, {});
     const d = await campData();
-    const types = chipSet($('#hmTypes'));
-    const standSel = $('#hmStand').value;
-    const tf = timeFilter($('#hmTime').value, $('#hmFrom').value, $('#hmTo').value);
-    const recs = d.sightings.filter((r) => r.status !== 'voided' && hasTypes(r, types) && tf(Date.parse(r.observed_at)) && (!standSel || r.stand_id === standSel));
-    const weight = types.has('weight');
-    const sel = C.DEER_TYPES.filter((t) => types.has(t));
-    const pts = recs.map((r) => { const p = MapKit.deerPos(r); return [p[0], p[1], weight ? C.totalOf(C.deerCounts(r), sel) : 1]; });
+    const tf = timeFilter(f.time, f.from, f.to);
+    const recs = d.sightings.filter((r) => r.status !== 'voided' && hasTypes(r, f.types) && tf(Date.parse(r.observed_at)) && (!f.stand || r.stand_id === f.stand));
+    const sel = C.DEER_TYPES.filter((t) => f.types.has(t));
+    const pts = recs.map((r) => { const p = MapKit.deerPos(r); return [p[0], p[1], f.weight ? C.totalOf(C.deerCounts(r), sel) : 1]; });
     const max = Math.max(1, ...pts.map((p) => p[2]));
     if (this.heat) this.map.removeLayer(this.heat);
     this.heat = L.heatLayer(pts, { radius: 32, blur: 22, maxZoom: 17, max: Math.max(2, max), minOpacity: 0.35 }).addTo(this.map);
     this.layer.clearLayers();
     const stands = standsForRecords(activeStands(), recs);
-    stands.forEach((s) => this.layer.addLayer(MapKit.standMarker(s, standSel && s.id !== standSel)));
-    if (!this.fitted) { MapKit.fit(this.map, standSel ? stands.filter((s) => s.id === standSel) : stands); this.fitted = true; }
+    stands.forEach((x) => this.layer.addLayer(MapKit.standMarker(x, f.stand && x.id !== f.stand)));
+    const key = (f.stand || 'all') + '|' + stands.length;
+    if (this.fitKey !== key) { MapKit.fit(this.map, f.stand ? stands.filter((x) => x.id === f.stand) : stands); this.fitKey = key; }
+    $('#hmAll').classList.toggle('hidden', !f.stand);
     const deer = recs.reduce((n, r) => n + C.totalOf(C.deerCounts(r), sel), 0);
     $('#hmCount').textContent = recs.length + ' sighting report(s), ' + deer + ' deer reported in total.';
     if (!navigator.onLine) MapKit.note($('#hmNote'), 'Offline: using records saved on this phone.');
@@ -2006,7 +2132,8 @@ const Replay = {
     this.fxLayer = L.layerGroup().addTo(this.map);
     this.map.on('moveend zoomend resize', () => this.relayoutGunshots());
     $('#rpSource').onchange = () => this.reload(false);
-    $('#rpDate').onchange = () => this.build(true);
+    $('#rpDate').onchange = () => { this.autoPart(); this.build(true); };
+    $('#rpPart').onchange = () => this.build(true);
     $('#rpStand').onchange = () => this.build(true);
     ['#rpDeer', '#rpGun', '#rpStands'].forEach((id) => $(id).addEventListener('click', () => {
       const c = $(id); c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
@@ -2034,12 +2161,22 @@ const Replay = {
     sel.innerHTML = dates.length ? dates.map((d) => '<option value="' + d + '">' + fmtDateKey(d) + '</option>').join('') : '<option value="">No records yet</option>';
     if (cur && dates.includes(cur)) sel.value = cur;
     else if (dates.includes(todayKey())) sel.value = todayKey();
+    if (!keepPosition && sel.value !== cur) this.autoPart();
     const stands = standsForRecords(src === 'import' ? this.data.stands : this.data.stands.filter((s) => s.is_active !== false), allRecs);
     this.allStands = stands;
     fillStandSelect($('#rpStand'), stands, true);
     if (src === 'import' && !allRecs.length) MapKit.note($('#rpNote'), 'No imported hunts yet. Use Settings → Import hunt JSON.');
     else MapKit.note($('#rpNote'), '');
     this.build(!keepPosition);
+  },
+  /** Pick the morning or evening hunt of the chosen day: the latest one with any events. */
+  autoPart() {
+    const date = $('#rpDate').value;
+    if (!date || !this.data) return;
+    const recs = this.data.sightings.concat(this.data.gunshots).filter((r) => r.status !== 'voided' && C.localDateKey(r.observed_at) === date);
+    const hasPm = recs.some((r) => !isMorning(Date.parse(r.observed_at)));
+    const hasAm = recs.some((r) => isMorning(Date.parse(r.observed_at)));
+    $('#rpPart').value = hasPm ? 'pm' : hasAm ? 'am' : 'day';
   },
   nameOfHunter(id) {
     const h = (this.data.hunters || []).find((x) => x.id === id);
@@ -2055,7 +2192,9 @@ const Replay = {
     const standSel = $('#rpStand').value;
     const showDeer = $('#rpDeer').getAttribute('aria-pressed') === 'true';
     const showGun = $('#rpGun').getAttribute('aria-pressed') === 'true';
-    const inDate = (iso) => date && C.localDateKey(iso) === date;
+    const part = $('#rpPart').value;
+    const inDate = (iso) => date && C.localDateKey(iso) === date &&
+      (part === 'day' || (part === 'am') === isMorning(Date.parse(iso)));
     const keep = (r) => r.status !== 'voided' && inDate(r.observed_at) && (!standSel || r.stand_id === standSel);
     this.events = C.timeline(showDeer ? this.data.sightings.filter(keep) : [], showGun ? this.data.gunshots.filter(keep) : []);
     this.sessions = this.data.sessions.filter((s) => inDate(s.started_at) && (!standSel || s.stand_id === standSel));
@@ -2064,7 +2203,8 @@ const Replay = {
       this.t0 = Math.min(...times) - 60000;
       this.t1 = Math.max(...times) + 60000;
     } else if (date) {
-      const b = C.localDayBounds(date); this.t0 = b.start; this.t1 = b.end;
+      const b = C.localDayBounds(date), noon = b.start + 12 * 3600000;
+      this.t0 = part === 'pm' ? noon : b.start; this.t1 = part === 'am' ? noon : b.end;
     } else { this.t0 = this.t1 = Date.now(); }
     this.shown.forEach((v) => clearTimeout(v.timer));
     this.evLayer.clearLayers(); this.fxLayer.clearLayers(); this.shown.clear(); this.lastCurrent = null;
@@ -2074,8 +2214,8 @@ const Replay = {
     this.renderList();
     const nSessions = this.sessions.length;
     $('#rpInfo').textContent = this.events.length
-      ? this.events.length + ' event(s) on this day from ' + new Set(this.events.map((e) => e.rec.stand_id)).size + ' stand(s)' + (nSessions ? ', ' + nSessions + ' hunt session(s)' : '') + '. Events appear at the time they were reported.'
-      : 'No deer sightings or gunshots for this selection.';
+      ? this.events.length + ' event(s) in this ' + ({ am: 'morning hunt', pm: 'evening hunt', day: 'day' }[part]) + ' from ' + new Set(this.events.map((e) => e.rec.stand_id)).size + ' stand(s)' + (nSessions ? ', ' + nSessions + ' hunt session(s)' : '') + '. Events appear at the time they were reported.'
+      : 'No deer sightings or gunshots for this ' + ({ am: 'morning hunt', pm: 'evening hunt', day: 'day' }[part]) + '. Try the other hunt or Whole day.';
     this.seek(resetTime || this.t < this.t0 || this.t > this.t1 ? this.t0 : this.t, false);
   },
   drawStands() {
@@ -2245,7 +2385,7 @@ const Replay = {
     this.removeEvent(e);
     this.addEvent(e);
     const v = this.shown.get(e.rec.id);
-    const color = C.standColor((this.allStands || []).find((x) => x.id === e.rec.stand_id) || standById(e.rec.stand_id) || { id: e.rec.stand_id });
+    const color = standColorFor((this.allStands || []).find((x) => x.id === e.rec.stand_id) || standById(e.rec.stand_id) || { id: e.rec.stand_id });
     v.bang = L.marker(this.bangPos(v.end), { icon: L.divIcon({ className: '',
       html: '<div style="position:relative;display:inline-block"><div class="bang" style="--bang-bg:' + color + '" data-stand="' + e.rec.stand_id + '">BANG!<span class="bang-dir">' + e.rec.direction + '</span></div></div>',
       iconSize: [120, 70], iconAnchor: [60, 35] }), interactive: false, zIndexOffset: 2000 });
@@ -2320,7 +2460,7 @@ async function renderSettings() {
   const canStands = !isCloudId() || (id && id.is_admin);
   $('#setStandsNote').textContent = isCloudId() ? (canStands ? 'Changes need an internet connection.' : 'Only the camp administrator can change stands.') : 'Stands on this phone.';
   $('#setAddStand').classList.toggle('hidden', !canStands);
-  $('#setStandList').innerHTML = S.stands.length ? S.stands.map((s) => '<div class="feed-item" style="border-left-color:' + C.standColor(s) + '"><div class="when">' + esc(s.name) + (s.is_active === false ? ' <span class="tag">Inactive</span>' : '') + '</div>' +
+  $('#setStandList').innerHTML = S.stands.length ? S.stands.map((s) => '<div class="feed-item" style="border-left-color:' + standColorFor(s) + '"><div class="when">' + esc(s.name) + (s.is_active === false ? ' <span class="tag">Inactive</span>' : '') + '</div>' +
     '<div class="small">' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? ' — ' + esc(s.description) : '') + '</div>' +
     (canStands ? '<div class="meta"><span></span><button class="btn btn-inline" data-stand="' + s.id + '">EDIT</button></div>' : '') + '</div>').join('') : '<p class="muted">No stands yet.</p>';
   $$('button[data-stand]', $('#setStandList')).forEach((b) => b.onclick = () => editStand(b.dataset.stand));
@@ -2500,7 +2640,7 @@ async function editStand(id) {
     '<button class="btn" type="button" id="useGps">📍 USE MY CURRENT LOCATION</button>' +
     '<label class="field">Description (optional)<input name="desc" maxlength="500" value="' + esc(s && s.description ? s.description : '') + '"></label>' +
     '<p style="margin:4px 0"><b>Color</b> <span class="small muted">(map marker and BANG!)</span></p><div class="swatches" role="radiogroup" aria-label="Stand color">' +
-      (() => { const cur = s ? C.standColor(s) : C.nextStandColor(S.stands); return C.STAND_COLORS.map((c) =>
+      (() => { const cur = s ? standColorFor(s) : C.nextStandColor(S.stands); return C.STAND_COLORS.map((c) =>
         '<label class="swatch" style="background:' + c + '"><input type="radio" name="color" value="' + c + '"' + (c.toLowerCase() === cur.toLowerCase() ? ' checked' : '') + ' aria-label="Color ' + c + '"></label>').join(''); })() + '</div>' +
     '<div class="check"><input type="checkbox" name="active" id="stActive" ' + (!s || s.is_active !== false ? 'checked' : '') + '><label for="stActive">Active (shown to hunters)</label></div>',
     'SAVE STAND', (f, err) => saveStandForm(f, err, s));
@@ -2753,6 +2893,7 @@ function bind() {
     closeWizard();
   };
   $('#gsCancel').onclick = closeGunshot;
+  $('#fsClose').onclick = () => FilterSheet.close();
   $('#cfOk').onclick = closeConfirm;
   $('#lastRecUndo').onclick = async () => {
     if (!S.lastRecord) return;
@@ -2838,7 +2979,7 @@ async function boot() {
   if (isCloudId()) Sync.soon(200); // also refreshes the hunter's name/admin status
   const st = standById(S.standId);
   if (st) Weather.refresh(st);
-  window.DeerCampApp = { S, DB, Sync, Cloud, Replay, show, saveLocal };
+  window.DeerCampApp = { S, DB, Sync, Cloud, Replay, show, saveLocal, standColorFor };
 }
 boot();
 })();
