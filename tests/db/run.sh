@@ -37,3 +37,19 @@ psql -q -v ON_ERROR_STOP=1 -d "$db3" -f "$here/supabase_stub.sql"
 psql -q -v ON_ERROR_STOP=1 -d "$db3" -f "$here/../../supabase/setup-all-in-one.sql"
 psql -q -t -A -v ON_ERROR_STOP=1 -d "$db3" -f "$here/rls_test.sql" 2>/dev/null | grep -q "ALL DATABASE TESTS PASSED"
 echo "ALL-IN-ONE SETUP TEST PASSED"
+
+# 4) supabase/upgrade-existing-project.sql on a project that ran only migration 1,
+#    and on one that also ran the deer-count add-on (migration 2) already
+up="$here/../../supabase/upgrade-existing-project.sql"
+for variant in only1 with2; do
+  d="deercamp_up_${variant}_$$"
+  createdb "$d"
+  psql -q -v ON_ERROR_STOP=1 -d "$d" -f "$here/supabase_stub.sql"
+  psql -q -v ON_ERROR_STOP=1 -d "$d" -f "${migrations[0]}"
+  psql -q -v ON_ERROR_STOP=1 -d "$d" -f "$here/upgrade_fixture.sql"
+  if [ "$variant" = with2 ]; then psql -q -v ON_ERROR_STOP=1 -d "$d" -f "${migrations[1]}"; fi
+  psql -q -v ON_ERROR_STOP=1 -d "$d" -f "$up"
+  psql -q -t -A -v ON_ERROR_STOP=1 -d "$d" -f "$here/upgrade_test.sql" >/dev/null 2>&1
+  dropdb "$d"
+  echo "UPGRADE FILE TEST PASSED ($variant)"
+done

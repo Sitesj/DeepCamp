@@ -3,13 +3,13 @@
 -- One sighting can now hold a group of different deer, e.g. 3 does, 1 buck
 -- and 2 fawns. Each sighting stores a count per type; `quantity` is the
 -- total and `deer_type` is the single type seen, or 'mixed'.
--- Run this AFTER 20261122000001_deer_camp_schema.sql.
+-- Run this AFTER 20261122000001_deer_camp_schema.sql. Safe to run more than once.
 
 alter table public.deer_sightings
-  add column buck_count    integer not null default 0 check (buck_count between 0 and 500),
-  add column doe_count     integer not null default 0 check (doe_count between 0 and 500),
-  add column fawn_count    integer not null default 0 check (fawn_count between 0 and 500),
-  add column unknown_count integer not null default 0 check (unknown_count between 0 and 500);
+  add column if not exists buck_count    integer not null default 0 check (buck_count between 0 and 500),
+  add column if not exists doe_count     integer not null default 0 check (doe_count between 0 and 500),
+  add column if not exists fawn_count    integer not null default 0 check (fawn_count between 0 and 500),
+  add column if not exists unknown_count integer not null default 0 check (unknown_count between 0 and 500);
 
 -- Existing single-type sightings: put their quantity under their type.
 -- (The audit trigger blocks edits to original observations, so it is paused
@@ -18,10 +18,13 @@ alter table public.deer_sightings disable trigger sightings_guard;
 update public.deer_sightings set
   buck_count    = case when deer_type = 'buck'    then quantity else 0 end,
   doe_count     = case when deer_type = 'doe'     then quantity else 0 end,
-  unknown_count = case when deer_type = 'unknown' then quantity else 0 end;
+  unknown_count = case when deer_type = 'unknown' then quantity else 0 end
+where buck_count + doe_count + fawn_count + unknown_count = 0;   -- only rows not yet converted
 alter table public.deer_sightings enable trigger sightings_guard;
 
 alter table public.deer_sightings drop constraint if exists deer_sightings_deer_type_check;
+alter table public.deer_sightings drop constraint if exists deer_counts_total_ok;
+alter table public.deer_sightings drop constraint if exists deer_type_matches_counts;
 
 alter table public.deer_sightings
   add constraint deer_counts_total_ok check (

@@ -48,6 +48,7 @@ The schema is in [`supabase/migrations/`](supabase/migrations/), as three files 
 3. `20261125000003_camp_code_sign_in.sql` — sign-in with a camp code instead of e-mail
 
 For a **new project**, [`supabase/setup-all-in-one.sql`](supabase/setup-all-in-one.sql) is the same three files joined together, so you only paste once.
+If your project **already ran the first file**, use [`supabase/upgrade-existing-project.sql`](supabase/upgrade-existing-project.sql) instead (files 2 and 3 joined; safe even if file 2 was already run).
 
 Together they create:
 
