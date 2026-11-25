@@ -11,6 +11,7 @@
  * the database policy tests.
  */
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 let playwright;
@@ -416,6 +417,8 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await waitFor(async () => (await page.locator('#liveMap .deer-pin').count()) >= 4, 10000, 'deer pins');
     const names = await page.locator('#liveMap .stand-pin .nm').allTextContents();
     assert(['North Ridge', 'Creek Stand', 'South Woods'].every((n) => names.includes(n)), 'all stands on one map: ' + names);
+    const colors = await page.locator('#liveMap .stand-pin .tri').evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor));
+    assert(new Set(colors).size === colors.length, 'each stand has its own color: ' + colors);
     assert((await page.locator('#liveMap path[stroke-dasharray]').count()) >= 1, 'dashed gunshot direction lines');
     await shot(page, '09-live-map');
     await menu(page, 'heat');
@@ -439,6 +442,12 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await page.waitForSelector('#replayMap .bang', { timeout: 15000 });
     await page.waitForTimeout(150);
     await shot(page, '11-replay-bang');
+    assert((await page.locator('#replayMap path[stroke-dasharray]').count()) === 0, 'no line connects the stand and the BANG!');
+    const bangs = await page.locator('#replayMap .bang').evaluateAll((els) => els.map((e) => ({
+      dir: e.querySelector('.bang-dir') && e.querySelector('.bang-dir').textContent, bg: e.style.getPropertyValue('--bang-bg'), stand: e.dataset.stand })));
+    const standColors = await page.evaluate(() => Object.fromEntries(window.DeerCampApp.Replay.allStands.map((x) => [x.id, window.DeerCore.standColor(x)])));
+    assert(bangs.length >= 1 && bangs.every((b) => window_dirs().includes(b.dir)), 'BANG! shows the direction: ' + JSON.stringify(bangs));
+    assert(bangs.every((b) => b.bg && b.bg.toLowerCase() === standColors[b.stand].toLowerCase()), 'BANG! is the color of its stand');
     await waitFor(() => page.evaluate(() => !window.DeerCampApp.Replay.playing), 20000, 'replay end');
     const geo = await page.evaluate(() => {
       const R = window.DeerCampApp.Replay, C = window.DeerCore;
@@ -491,6 +500,7 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     // scrubbing back hides later events
     await page.click('#rpRestart');
     assert((await page.locator('#replayMap .deer-pin').count()) === 0, 'restart clears map');
+    function window_dirs() { return ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']; }
     function window_bearing(d) { return ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'].indexOf(d) * 22.5; }
     function mid(k) { return { '0-25': 12.5, '25-50': 37.5, '50-75': 62.5, '75-100': 87.5, '100-200': 150 }[k]; }
   });
@@ -612,6 +622,68 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert((await p.textContent('#syncStatus')).includes('Saved on Phone'), 'status');
     assert((await local(p, 'outbox')).length === 0, 'nothing queued for upload');
     await ctx.close();
+  });
+
+  await test('Hunter clears old records from their phone (camp copy and unsent records are kept)', async () => {
+    // John's phone was released by the admin earlier: he joins again first
+    await menu(jpage, 'home').catch(() => {});
+    await jpage.click('#syncStatus');
+    await joinCamp(jpage, 'John', '777888');
+    await jpage.waitForSelector('#screen-home.active, #screen-stand.active');
+    if (await jpage.isVisible('#screen-stand')) await chooseStand(jpage, 'Creek Stand');
+    const serverBefore = fake.tables.deer_sightings.length + fake.tables.gunshot_reports.length;
+    await johnCtx.setOffline(true);
+    await jpage.evaluate(() => window.dispatchEvent(new Event('offline')));
+    await menu(jpage, 'home');
+    await recordGunshot(jpage, 'S');                      // not uploaded yet
+    const unsent = (await local(jpage, 'gunshots')).find((x) => x.direction === 'S');
+    await menu(jpage, 'settings');
+    const tomorrow = await jpage.evaluate(() => window.DeerCore.localDateKey(new Date(Date.now() + 86400000).toISOString()));
+    await jpage.fill('#clrPhoneDate', tomorrow);
+    await jpage.click('#clrPhoneBtn');
+    await jpage.locator('#dialogBox button[data-v="1"]').click();
+    await waitFor(async () => (await local(jpage, 'sightings')).length === 0, 5000, 'local copies removed');
+    const g = await local(jpage, 'gunshots');
+    assert(g.length === 1 && g[0].id === unsent.id, 'the record waiting to upload is kept');
+    assert(fake.tables.deer_sightings.length + fake.tables.gunshot_reports.length === serverBefore, 'camp records untouched');
+    await johnCtx.setOffline(false);
+    await jpage.evaluate(() => window.dispatchEvent(new Event('online')));
+    await waitFor(() => fake.tables.gunshot_reports.some((x) => x.id === unsent.id), 10000, 'kept record uploads');
+    await jpage.click('#setSyncNow');
+    await jpage.waitForTimeout(1500);
+    assert((await local(jpage, 'sightings')).length === 0, 'cleared records are not downloaded again');
+    await jpage.click('#clrRedownload');
+    await waitFor(async () => (await local(jpage, 'sightings')).length > 0, 10000, 'downloaded again on request');
+  });
+
+  await test('Admin clears old camp records for everyone', async () => {
+    // an old hunt from last season, already on the server
+    const daveId = fake.tables.profiles.find((x) => x.display_name === 'Dave').id;
+    const oldSess = { id: crypto.randomUUID(), hunter_id: daveId, stand_id: ridge.id, started_at: '2025-11-01T11:00:00.000Z', ended_at: '2025-11-01T15:00:00.000Z', stand_latitude: ridge.latitude, stand_longitude: ridge.longitude, updated_at: new Date().toISOString() };
+    const oldDeer = { id: crypto.randomUUID(), hunter_id: daveId, stand_id: ridge.id, session_id: oldSess.id, observed_at: '2025-11-01T12:00:00.000Z',
+      first_seen_direction: 'N', first_seen_bearing: 0, distance_range: '0-25', distance_min_yards: 0, distance_max_yards: 25, heading_direction: null, heading_bearing: null,
+      quantity: 1, deer_type: 'doe', buck_count: 0, doe_count: 1, fawn_count: 0, unknown_count: 0, stand_latitude: ridge.latitude, stand_longitude: ridge.longitude,
+      est_latitude: ridge.latitude, est_longitude: ridge.longitude, weather: null, status: 'active', voided_at: null, void_reason: null, corrects_id: null, recorded_at: null, updated_at: new Date().toISOString() };
+    fake.tables.hunting_sessions.push(oldSess);
+    fake.tables.deer_sightings.push(oldDeer);
+    await menu(page, 'settings');
+    await page.click('#setSyncNow');
+    await waitFor(async () => (await local(page, 'sightings')).some((x) => x.id === oldDeer.id), 10000, 'old record on admin phone');
+    await waitFor(async () => (await local(jpage, 'sightings')).length > 0, 5000, 'john has records');
+    await jpage.click('#setSyncNow');
+    await waitFor(async () => (await local(jpage, 'sightings')).some((x) => x.id === oldDeer.id), 10000, 'old record on John phone');
+    const todayCount = fake.tables.deer_sightings.length - 1;
+    await page.waitForSelector('#setPurgeCard:not(.hidden)');
+    assert(!(await jpage.isVisible('#setPurgeCard')), 'hunters do not see the camp clear-out');
+    await page.fill('#purgeDate', '2026-01-01');
+    await page.click('#purgeBtn');
+    await page.locator('#dialogBox button', { hasText: 'DELETE WITHOUT A BACKUP' }).click();
+    await waitFor(() => !fake.tables.deer_sightings.some((x) => x.id === oldDeer.id), 8000, 'deleted on the server');
+    assert(fake.tables.deer_sightings.length === todayCount, "this season's records are kept");
+    assert(!fake.tables.hunting_sessions.some((x) => x.id === oldSess.id), 'empty old hunt removed');
+    await waitFor(async () => !(await local(page, 'sightings')).some((x) => x.id === oldDeer.id), 5000, 'gone from the admin phone');
+    await jpage.click('#setSyncNow');
+    await waitFor(async () => !(await local(jpage, 'sightings')).some((x) => x.id === oldDeer.id), 10000, "gone from John's phone after sync");
   });
 
   await test('Stand with a missing minus sign on the longitude is caught', async () => {

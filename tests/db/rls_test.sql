@@ -260,6 +260,36 @@ select pg_temp.expect(public.whoami() -> 'hunter' = 'null'::jsonb, 'deactivated 
 select pg_temp.expect((select count(*) from deer_sightings) = 0, 'deactivated hunter sees nothing');
 reset role;
 
+-- ---- Stand colors
+select pg_temp.act_as('00000000-0000-4000-8000-00000000000a');
+update stands set color = '#1f77b4' where id = '11111111-1111-4111-8111-111111111111';
+select pg_temp.expect((select color from stands where id = '11111111-1111-4111-8111-111111111111') = '#1f77b4', 'admin sets a stand color');
+select pg_temp.expect_fail($$update stands set color = 'red' where id = '11111111-1111-4111-8111-111111111111'$$, 'stand color must be #rrggbb');
+reset role;
+
+-- ---- Clearing old camp records
+-- a correction recorded later points at Mike's original sighting from Nov 20
+insert into deer_sightings (id, hunter_id, stand_id, session_id, observed_at, first_seen_direction,
+  first_seen_bearing, distance_range, distance_min_yards, distance_max_yards, quantity, doe_count, deer_type,
+  stand_latitude, stand_longitude, corrects_id)
+values ('99999999-0000-4999-8999-000000000001', 'b0000000-0000-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111',
+  '33333333-3333-4333-8333-333333333333', '2026-11-23T12:00:00Z', 'N', 0, '0-25', 0, 25, 1, 1, 'doe', 38.5, -90.5,
+  '44444444-4444-4444-8444-444444444444');
+select pg_temp.act_as('00000000-0000-4000-8000-00000000000d');
+select pg_temp.expect_fail($$select public.purge_records_before('2026-11-21T00:00:00Z')$$, 'non-admin cannot clear camp records');
+reset role;
+select pg_temp.act_as('00000000-0000-4000-8000-00000000000a');
+select pg_temp.expect_fail($$select public.purge_records_before(now() + interval '1 day')$$, 'cannot clear with a future date');
+select pg_temp.expect((select (r ->> 'deer_sightings')::int = 2 and (r ->> 'gunshot_reports')::int = 1
+  from (select public.purge_records_before('2026-11-21T00:00:00Z') r) x), 'admin clears records before a date');
+select pg_temp.expect(public.whoami() ->> 'purged_before' like '2026-11-21%', 'phones are told the cleared-before date');
+reset role;
+select pg_temp.expect((select count(*) from deer_sightings where observed_at < '2026-11-21') = 0, 'old sightings are gone');
+select pg_temp.expect((select corrects_id is null from deer_sightings where id = '99999999-0000-4999-8999-000000000001'), 'later correction is kept, its link cleared');
+select pg_temp.expect((select count(*) from hunting_sessions where id = '33333333-3333-4333-8333-333333333333') = 1, 'hunt with a newer record is kept');
+select pg_temp.expect_fail($$update deer_sightings set corrects_id = '99999999-0000-4999-8999-000000000001'
+  where id = '99999999-0000-4999-8999-000000000001'$$, 'outside a purge, original records still cannot be edited');
+
 -- No property concept anywhere
 select pg_temp.expect((select count(*) from information_schema.columns
   where table_schema = 'public' and column_name ilike '%propert%') = 0, 'no property columns exist');

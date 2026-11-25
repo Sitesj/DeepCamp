@@ -252,6 +252,11 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 2px solid #fff; box-shadow: 0 0 0 1px #333; }
 
 .stand-pin { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px #888; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.swatch input { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; margin: 0; }
+.swatch input:checked { background: #fff; box-shadow: 0 0 0 3px #000; }
+.swatch:has(input:checked) { box-shadow: 0 0 0 4px #000; }
 .stand-pin .tri { width: 22px; height: 22px; background: var(--orange); border: 3px solid #fff; border-radius: 4px; transform: rotate(45deg); box-shadow: 0 1px 4px rgba(0,0,0,.6); }
 .stand-pin .nm { margin-top: 4px; background: rgba(0,0,0,.78); color: #fff; font-weight: 800; font-size: 13px; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
 .stand-pin.dim { opacity: .55; }
@@ -272,12 +277,14 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 .gun-alert.pulse { animation: pulse 1s ease-in-out 3; }
 @keyframes pulse { 50% { transform: scale(1.3); } }
 .bang {
-  font-family: "Impact", "Arial Black", system-ui, sans-serif; font-weight: 900; font-size: 30px; color: #ffe600;
-  -webkit-text-stroke: 2px #b8231b; text-shadow: 3px 3px 0 #000; white-space: nowrap;
+  font-family: "Impact", "Arial Black", system-ui, sans-serif; font-weight: 900; font-size: 30px; color: #fff;
+  -webkit-text-stroke: 1.5px #000; text-shadow: 2px 2px 0 #000; white-space: nowrap; text-align: center; line-height: 1;
   animation: bang-pop .5s ease-out both, gun-fade-out 1s ease-in 29s forwards; transform-origin: center;
 }
+.bang .bang-dir { display: block; font-size: 20px; margin-top: 2px; }
 .bang::before {
-  content: ""; position: absolute; inset: -14px -18px; z-index: -1; background: #e02d1b;
+  content: ""; position: absolute; inset: -18px -22px; z-index: -1; background: var(--bang-bg, #e02d1b);
+  filter: drop-shadow(0 0 2px #000);
   clip-path: polygon(50% 0, 61% 30%, 95% 12%, 75% 42%, 100% 58%, 70% 64%, 82% 98%, 52% 74%, 22% 100%, 30% 68%, 0 70%, 24% 48%, 4% 18%, 38% 30%);
 }
 @keyframes bang-pop { 0% { transform: scale(.2); opacity: 0; } 50% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -427,7 +434,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
     </div>
     <div class="map-wrap"><div class="map" id="liveMap"></div><div class="map-note hidden" id="lmNote"></div></div>
     <div class="legend">
-      <span><i class="sw" style="background:var(--orange);border-radius:3px"></i>Stand</span>
+      <span><i class="sw" style="background:#1f6fd1;border-radius:3px;transform:rotate(45deg)"></i>Stand (each has its own color)</span>
       <span><i class="sw" style="background:var(--buck)"></i>Buck</span>
       <span><i class="sw" style="background:var(--doe)"></i>Doe</span>
       <span><i class="sw" style="background:var(--fawn)"></i>Fawn</span>
@@ -528,6 +535,21 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <p id="setSync"></p>
       <button class="btn btn-primary" id="setSyncNow">SYNC NOW</button>
       <div id="setSyncErrors" class="small"></div>
+    </div>
+
+    <div class="card" id="setClearPhone">
+      <h3>Clear records from this phone</h3>
+      <p class="small muted" id="clrPhoneNote">Removes old records from this phone only, to keep it tidy. Anything still waiting to upload is always kept.</p>
+      <label class="field">Remove records from before<input type="date" id="clrPhoneDate"></label>
+      <button class="btn" id="clrPhoneBtn">CLEAR FROM THIS PHONE</button>
+      <button class="btn-link hidden" id="clrRedownload" type="button">Download all camp records to this phone again</button>
+    </div>
+
+    <div class="card hidden" id="setPurgeCard">
+      <h3>Clear old camp records (administrator)</h3>
+      <p class="small"><b>Permanently deletes</b> deer sightings, gunshot reports and empty hunts from before the date, for <b>everyone</b>. Each phone also removes its copies the next time it syncs. Download a backup first if you may want them later.</p>
+      <label class="field">Delete camp records from before<input type="date" id="purgeDate"></label>
+      <button class="btn btn-danger" id="purgeBtn">DELETE OLD CAMP RECORDS</button>
     </div>
 
     <div class="card hidden" id="setLeftovers">
@@ -868,6 +890,7 @@ const Sync = {
         this.authNeeded = true;
         return;
       }
+      changed = (await applyCampPurge(me.purged_before)) || changed;
       changed = (await this.push(S.identity.hunter_id)) || changed;
       changed = (await this.pull()) || changed;
       this.lastError = null;
@@ -971,6 +994,7 @@ const Sync = {
     await loadCatalog();
 
     const since = await DB.getMeta('lastPullAt');
+    const cutoffMs = await clearedBeforeMs();
     let maxSeen = since;
     for (const table of ['hunting_sessions', 'deer_sightings', 'gunshot_reports']) {
       let from = 0;
@@ -982,7 +1006,7 @@ const Sync = {
         if (res.error) throw res.error;
         const rows = res.data || [];
         if (rows.length) {
-          await this.storeRemote(table, rows);
+          await this.storeRemote(table, rows, cutoffMs);
           changed = true;
           rows.forEach((r) => { if (!maxSeen || Date.parse(r.updated_at) > Date.parse(maxSeen)) maxSeen = r.updated_at; });
         }
@@ -993,8 +1017,10 @@ const Sync = {
     if (maxSeen) await DB.setMeta('lastPullAt', new Date(Date.parse(maxSeen)).toISOString());
     return changed;
   },
-  storeRemote(table, rows) {
+  storeRemote(table, rows, cutoffMs) {
     const store = STORE_FOR[table];
+    const timeField = table === 'hunting_sessions' ? 'started_at' : 'observed_at';
+    if (cutoffMs) rows = rows.filter((row) => !(Date.parse(row[timeField]) < cutoffMs)); // cleared: do not bring back
     const tsFields = ['started_at', 'ended_at', 'observed_at', 'voided_at', 'recorded_at'];
     return DB.write([store, 'outbox'], (t) => {
       const os = t.objectStore(store), ob = t.objectStore('outbox');
@@ -1813,7 +1839,7 @@ const MapKit = {
   },
   standMarker(s, dim) {
     return L.marker([s.latitude, s.longitude], {
-      icon: L.divIcon({ className: '', html: '<div class="stand-pin' + (dim ? ' dim' : '') + '"><div class="tri"></div><div class="nm">' + esc(s.name) + '</div></div>', iconSize: [120, 52], iconAnchor: [60, 14] }),
+      icon: L.divIcon({ className: '', html: '<div class="stand-pin' + (dim ? ' dim' : '') + '"><div class="tri" style="background:' + C.standColor(s) + '"></div><div class="nm" style="border-bottom:4px solid ' + C.standColor(s) + '">' + esc(s.name) + '</div></div>', iconSize: [120, 56], iconAnchor: [60, 14] }),
       zIndexOffset: 500, keyboard: false
     }).bindPopup('<b>' + esc(s.name) + '</b><br>' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? '<br>' + esc(s.description) : ''));
   },
@@ -2200,23 +2226,13 @@ const Replay = {
   layoutGunshot(v) {
     const r = v.rec, map = this.map;
     const end = this.gunEnd(r);
-    v.end = end.latlng;
-    v.line.clearLayers();
-    const dirX = Math.sin(r.bearing * Math.PI / 180), dirY = -Math.cos(r.bearing * Math.PI / 180);
-    const hx = end.px.x - dirX * 18, hy = end.px.y - dirY * 18;
-    const left = map.containerPointToLatLng([hx - dirY * 10, hy + dirX * 10]);
-    const right = map.containerPointToLatLng([hx + dirY * 10, hy - dirX * 10]);
-    const start = [r.stand_latitude, r.stand_longitude];
-    v.line.addLayer(L.polyline([start, end.latlng], { color: '#000', weight: 7, opacity: .45, dashArray: '12 9', interactive: false }));
-    v.line.addLayer(L.polyline([start, end.latlng], { color: '#ff2a1a', weight: 4, dashArray: '12 9', interactive: false }));
-    v.line.addLayer(L.polyline([left, end.latlng, right], { color: '#ff2a1a', weight: 5, interactive: false }));
-    v.line.eachLayer((l) => this.setFade(l.getElement(), v));
+    v.end = end.latlng;   // no line is drawn: the BANG! itself sits in the direction the shot came from
     if (v.bang) v.bang.setLatLng(this.bangPos(v.end));
   },
   /** Keep the whole BANG! label inside the visible map. */
   bangPos(end) {
     const size = this.map.getSize(), p = this.map.latLngToContainerPoint(end);
-    const cx = Math.max(80, Math.min(size.x - 80, p.x)), cy = Math.max(40, Math.min(size.y - 40, p.y));
+    const cx = Math.max(84, Math.min(size.x - 84, p.x)), cy = Math.max(62, Math.min(size.y - 62, p.y));
     return (cx !== p.x || cy !== p.y) ? this.map.containerPointToLatLng([cx, cy]) : end;
   },
   relayoutGunshots() { this.shown.forEach((v) => { if (v.kind === 'gunshot') this.layoutGunshot(v); }); },
@@ -2229,7 +2245,10 @@ const Replay = {
     this.removeEvent(e);
     this.addEvent(e);
     const v = this.shown.get(e.rec.id);
-    v.bang = L.marker(this.bangPos(v.end), { icon: L.divIcon({ className: '', html: '<div style="position:relative;display:inline-block"><div class="bang">BANG!</div></div>', iconSize: [110, 44], iconAnchor: [55, 22] }), interactive: false, zIndexOffset: 2000 });
+    const color = C.standColor((this.allStands || []).find((x) => x.id === e.rec.stand_id) || standById(e.rec.stand_id) || { id: e.rec.stand_id });
+    v.bang = L.marker(this.bangPos(v.end), { icon: L.divIcon({ className: '',
+      html: '<div style="position:relative;display:inline-block"><div class="bang" style="--bang-bg:' + color + '" data-stand="' + e.rec.stand_id + '">BANG!<span class="bang-dir">' + e.rec.direction + '</span></div></div>',
+      iconSize: [120, 70], iconAnchor: [60, 35] }), interactive: false, zIndexOffset: 2000 });
     this.fxLayer.addLayer(v.bang);
     const b = v.bang.getElement() && v.bang.getElement().querySelector('.bang');
     if (b) b.style.animationDelay = '0ms, ' + Math.max(0, this.GUN_SHOW_MS - 1000) + 'ms';
@@ -2290,11 +2309,18 @@ async function renderSettings() {
   $('#exShare').classList.toggle('hidden', !(navigator.canShare && window.File));
   renderImportInfo();
   renderLeftovers();
+  if (!$('#clrPhoneDate').value) $('#clrPhoneDate').value = C.localDateKey(new Date(Date.now() - 30 * 86400000).toISOString());
+  if (!$('#purgeDate').value) $('#purgeDate').value = C.localDateKey(new Date(Date.now() - 365 * 86400000).toISOString());
+  $('#clrPhoneNote').textContent = isCloudId()
+    ? 'Removes old records from this phone only, to keep it tidy. The camp keeps its copy, and anything still waiting to upload is always kept.'
+    : 'Phone-only mode: this phone holds the only copy, so cleared records are gone for good. Download them first if you want to keep them.';
+  $('#clrRedownload').classList.toggle('hidden', !(isCloudId() && (await DB.getMeta('localClearedBefore'))));
+  $('#setPurgeCard').classList.toggle('hidden', !(isCloudId() && id && id.is_admin));
   // stands
   const canStands = !isCloudId() || (id && id.is_admin);
   $('#setStandsNote').textContent = isCloudId() ? (canStands ? 'Changes need an internet connection.' : 'Only the camp administrator can change stands.') : 'Stands on this phone.';
   $('#setAddStand').classList.toggle('hidden', !canStands);
-  $('#setStandList').innerHTML = S.stands.length ? S.stands.map((s) => '<div class="feed-item" style="border-left-color:var(--orange)"><div class="when">' + esc(s.name) + (s.is_active === false ? ' <span class="tag">Inactive</span>' : '') + '</div>' +
+  $('#setStandList').innerHTML = S.stands.length ? S.stands.map((s) => '<div class="feed-item" style="border-left-color:' + C.standColor(s) + '"><div class="when">' + esc(s.name) + (s.is_active === false ? ' <span class="tag">Inactive</span>' : '') + '</div>' +
     '<div class="small">' + s.latitude.toFixed(5) + ', ' + s.longitude.toFixed(5) + (s.description ? ' — ' + esc(s.description) : '') + '</div>' +
     (canStands ? '<div class="meta"><span></span><button class="btn btn-inline" data-stand="' + s.id + '">EDIT</button></div>' : '') + '</div>').join('') : '<p class="muted">No stands yet.</p>';
   $$('button[data-stand]', $('#setStandList')).forEach((b) => b.onclick = () => editStand(b.dataset.stand));
@@ -2310,6 +2336,102 @@ async function renderSettings() {
   try { if (navigator.storage && navigator.storage.persisted) persisted = (await navigator.storage.persisted()) ? 'yes' : 'no'; } catch (_) {}
   const swState = navigator.serviceWorker && navigator.serviceWorker.controller ? 'ready for offline use' : 'not yet ready for offline use (open once with internet, then reload)';
   $('#setAbout').innerHTML = 'Deer Camp version ' + C.APP_VERSION + '<br>App files: ' + swState + '<br>Storage protected from automatic cleanup: ' + persisted;
+}
+
+// ======================================================= Clearing old records
+/**
+ * Remove records observed before cutoffMs from this phone. Never removes
+ * anything still waiting to upload, or the hunt in progress.
+ */
+async function clearLocalBefore(cutoffMs) {
+  const waiting = new Set((await DB.all('outbox')).map((o) => o.record_id));
+  const [sessions, sightings, gunshots] = await Promise.all(['sessions', 'sightings', 'gunshots'].map((x) => DB.all(x)));
+  const old = (r, f) => Date.parse(r[f]) < cutoffMs && !waiting.has(r.id);
+  const delS = sightings.filter((r) => old(r, 'observed_at'));
+  const delG = gunshots.filter((r) => old(r, 'observed_at'));
+  const gone = new Set(delS.concat(delG).map((r) => r.id));
+  const stillUsed = new Set(sightings.concat(gunshots).filter((r) => !gone.has(r.id)).map((r) => r.session_id));
+  const activeId = S.session && S.session.id;
+  const delSess = sessions.filter((r) => old(r, 'started_at') && r.id !== activeId && !stillUsed.has(r.id));
+  await DB.write(['sessions', 'sightings', 'gunshots'], (t) => {
+    delS.forEach((r) => t.objectStore('sightings').delete(r.id));
+    delG.forEach((r) => t.objectStore('gunshots').delete(r.id));
+    delSess.forEach((r) => t.objectStore('sessions').delete(r.id));
+  });
+  if (S.lastRecord && gone.has(S.lastRecord.id)) S.lastRecord = null;
+  return { records: delS.length + delG.length, hunts: delSess.length };
+}
+
+/** Records older than this are not downloaded again (cleared here, or cleared by the camp). */
+async function clearedBeforeMs() {
+  const a = Date.parse(await DB.getMeta('localClearedBefore') || '') || 0;
+  const b = Date.parse(await DB.getMeta('campPurgedBefore') || '') || 0;
+  return Math.max(a, b);
+}
+
+/** The administrator cleared camp records before a date: drop this phone's copies too. */
+async function applyCampPurge(iso) {
+  if (!iso) return false;
+  const prev = await DB.getMeta('campPurgedBefore');
+  if (prev && Date.parse(prev) >= Date.parse(iso)) return false;
+  await DB.setMeta('campPurgedBefore', new Date(Date.parse(iso)).toISOString());
+  const n = await clearLocalBefore(Date.parse(iso));
+  return n.records + n.hunts > 0;
+}
+
+async function onClearPhone() {
+  const d = $('#clrPhoneDate').value;
+  if (!d) { toast('Choose a date'); return; }
+  const cutoff = C.localDayBounds(d).start;
+  const cloud = isCloudId();
+  const msg = 'Remove records from before ' + fmtDateKey(d) + ' from this phone? ' +
+    (cloud ? 'The camp keeps its copy. Records still waiting to upload are kept.' : 'This phone has the only copy, so they will be gone for good.');
+  if (!(await Dialog.confirm('Clear this phone?', msg, 'CLEAR', 'CANCEL', true))) return;
+  const n = await clearLocalBefore(cutoff);
+  if (cloud) {
+    const prev = Date.parse(await DB.getMeta('localClearedBefore') || '') || 0;
+    if (cutoff > prev) await DB.setMeta('localClearedBefore', new Date(cutoff).toISOString());
+  }
+  toast('Removed ' + n.records + ' record(s) and ' + n.hunts + ' hunt(s) from this phone', 5000);
+  onDataChanged();
+  renderSettings();
+}
+
+async function onRedownload() {
+  if (!navigator.onLine) { toast('Needs an internet connection'); return; }
+  await DB.setMeta('localClearedBefore', null);
+  await DB.setMeta('lastPullAt', null);
+  toast('Downloading camp records…');
+  await Sync.run('redownload');
+  renderSettings();
+}
+
+async function onPurgeCamp() {
+  const d = $('#purgeDate').value;
+  if (!d) { toast('Choose a date'); return; }
+  if (!navigator.onLine) { toast('Deleting camp records needs an internet connection.'); return; }
+  const choice = await Dialog.choose('Delete camp records before ' + fmtDateKey(d) + '?',
+    'This permanently deletes them for everyone in the camp. It cannot be undone.', [
+      { label: 'DOWNLOAD A BACKUP, THEN DELETE', value: 'backup', cls: 'btn-primary' },
+      { label: 'DELETE WITHOUT A BACKUP', value: 'delete', cls: 'btn-danger' }
+    ]);
+  if (!choice) return;
+  if (choice === 'backup') {
+    const obj = C.buildExport(await campData(), { type: 'all' });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'deer-camp-backup-' + todayKey() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    if (!(await Dialog.confirm('Backup downloaded', 'Check that the backup file saved, then tap DELETE to clear the old camp records.', 'DELETE', 'CANCEL', true))) return;
+  }
+  try {
+    const cutoff = new Date(C.localDayBounds(d).start).toISOString();
+    const r = await Cloud.rpc('purge_records_before', { cutoff });
+    await applyCampPurge(cutoff);
+    toast('Deleted ' + r.deer_sightings + ' sighting(s), ' + r.gunshot_reports + ' gunshot report(s) and ' + r.hunting_sessions + ' hunt(s).', 7000);
+    onDataChanged();
+    renderSettings();
+  } catch (e) { toast('Not deleted: ' + (e.message || e), 7000); }
 }
 
 async function renderLeftovers() {
@@ -2369,6 +2491,9 @@ async function editStand(id) {
     '<label class="field">Longitude<input name="lng" inputmode="decimal" value="' + (s ? s.longitude : '') + '" placeholder="-90.12345"></label>' +
     '<button class="btn" type="button" id="useGps">📍 USE MY CURRENT LOCATION</button>' +
     '<label class="field">Description (optional)<input name="desc" maxlength="500" value="' + esc(s && s.description ? s.description : '') + '"></label>' +
+    '<p style="margin:4px 0"><b>Color</b> <span class="small muted">(map marker and BANG!)</span></p><div class="swatches" role="radiogroup" aria-label="Stand color">' +
+      (() => { const cur = s ? C.standColor(s) : C.nextStandColor(S.stands); return C.STAND_COLORS.map((c) =>
+        '<label class="swatch" style="background:' + c + '"><input type="radio" name="color" value="' + c + '"' + (c.toLowerCase() === cur.toLowerCase() ? ' checked' : '') + ' aria-label="Color ' + c + '"></label>').join(''); })() + '</div>' +
     '<div class="check"><input type="checkbox" name="active" id="stActive" ' + (!s || s.is_active !== false ? 'checked' : '') + '><label for="stActive">Active (shown to hunters)</label></div>',
     'SAVE STAND', (f, err) => saveStandForm(f, err, s));
 }
@@ -2388,7 +2513,8 @@ async function saveStandForm(f, err, s) {
   if (latTxt.includes(',') && !lngTxt) { [latTxt, lngTxt] = latTxt.split(',').map((x) => x.trim()); }
   const rec = {
     id: s ? s.id : C.uuid(), name: f.name.value.trim(), latitude: parseFloat(latTxt), longitude: parseFloat(lngTxt),
-    description: f.desc.value.trim() || null, is_active: f.active.checked
+    description: f.desc.value.trim() || null, is_active: f.active.checked,
+    color: (f.querySelector('input[name="color"]:checked') || {}).value || C.nextStandColor(S.stands)
   };
   const errs = C.validateStand(rec);
   if (errs.length) { err(errs.join('. ')); return false; }
@@ -2406,7 +2532,7 @@ async function saveStandForm(f, err, s) {
   }
   if (isCloudId()) {
     if (!navigator.onLine) { err('Changing stands needs an internet connection.'); return false; }
-    const q = s ? Cloud.sb.from('stands').update({ name: rec.name, latitude: rec.latitude, longitude: rec.longitude, description: rec.description, is_active: rec.is_active }).eq('id', rec.id).select()
+    const q = s ? Cloud.sb.from('stands').update({ name: rec.name, latitude: rec.latitude, longitude: rec.longitude, description: rec.description, is_active: rec.is_active, color: rec.color }).eq('id', rec.id).select()
       : Cloud.sb.from('stands').insert(rec).select();
     const { data, error } = await q;
     if (error || !data || !data.length) { err('Not saved: ' + (error ? error.message : 'no permission')); return false; }
@@ -2646,6 +2772,9 @@ function bind() {
   $('#setSwitch').onclick = signOutFlow;
   $('#setSyncNow').onclick = () => Sync.run('manual');
   $('#leftoverExport').onclick = exportLeftovers;
+  $('#clrPhoneBtn').onclick = onClearPhone;
+  $('#clrRedownload').onclick = onRedownload;
+  $('#purgeBtn').onclick = onPurgeCamp;
   $('#leftoverRemove').onclick = removeLeftovers;
   $('#setAddStand').onclick = () => editStand(null);
   $('#addHunterBtn').onclick = addHunter;

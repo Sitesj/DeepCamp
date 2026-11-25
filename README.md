@@ -47,6 +47,7 @@ The schema is in [`supabase/migrations/`](supabase/migrations/), as four files t
 2. `20261122000002_mixed_deer_groups.sql` — buck / doe / fawn / unknown counts, so one sighting can be a mixed group
 3. `20261125000003_camp_code_sign_in.sql` — sign-in with a camp code instead of e-mail
 4. `20261125000004_admin_pin.sql` — a separate admin PIN for joining as an administrator
+5. `20261126000005_stand_colors_and_clearing.sql` — stand colors, and clearing old camp records
 
 For a **new project**, [`supabase/setup-all-in-one.sql`](supabase/setup-all-in-one.sql) is all the files joined together, so you only paste once.
 If your project **already ran the first file**, use [`supabase/upgrade-existing-project.sql`](supabase/upgrade-existing-project.sql) instead (files 2 onward joined; safe to run again if some or all of it was run before).
@@ -149,6 +150,7 @@ As an administrator, open **☰ → Settings → Stands → ADD STAND** (or **ED
 
 - **Stand name** — what hunters will see, e.g. "North Ridge".
 - **Latitude / Longitude** in decimal degrees, e.g. `38.12345` and `-90.12345`. You can paste `38.12345, -90.12345` (as copied from Google Maps) into the Latitude box.
+- **Color** — each stand has its own color, used for its map marker and for its BANG! in Hunt Replay. A new stand gets an unused color automatically; tap a different circle to change it.
 - **📍 USE MY CURRENT LOCATION** fills in the coordinates from the phone's GPS — easiest when you are standing at the stand.
 - If the spot is far from your other stands, Deer Camp warns you before saving. The usual cause is a missing minus sign: in the U.S. the longitude is negative (for example `-90.12345`); without the minus sign the stand lands in Asia.
 - **Active** — untick to hide a stand you no longer hunt. Old records keep their location because each record stores the stand's coordinates at the time it was made.
@@ -195,6 +197,11 @@ The satellite pictures do not load offline; the maps still show stands and recor
 
 Sync is attempted when the app starts, when service comes back, when the app is brought to the front, every minute or two while it is open, after every new record, and when you tap the status. Failed uploads are retried automatically and shown as **Sync Failed — tap to retry** with the reason in Settings → Sync.
 
+### Clearing old records
+
+- **Every hunter — Settings → Clear records from this phone:** removes records from before a date from that phone only, to keep it tidy. The camp keeps its copy, anything still waiting to upload is never removed, and cleared records are not downloaded again (a link in the same card downloads them again if wanted). In phone-only mode the phone holds the only copy, so cleared records are gone for good.
+- **Administrator — Settings → Clear old camp records:** permanently deletes deer sightings, gunshot reports and empty hunts from before a date **for everyone**. The app offers to download a backup first. Every phone removes its copies the next time it syncs. A record still waiting to upload on some phone when the camp is cleared will still upload afterwards.
+
 ## 11. Export JSON
 
 **☰ → Settings → Download hunt JSON**. Choose:
@@ -226,7 +233,7 @@ Imported hunts can be replayed offline.
 1. Choose **Camp records** or **Imported files**, the **date**, and **All stands** or one stand.
 2. Tap **▶ PLAY**. The clock runs from just before the first event of the day to just after the last. Choose the speed (1x, 5x, 10x, 30x, 60x, 300x). **NEXT ⏭** jumps to the next event; drag the timeline to move anywhere; **⟲ RESTART** goes back to the start.
 3. **Deer** appear at their *estimated* first-seen location (stand + reported direction + middle of the distance range) with a short arrow showing the direction they were headed. No path is drawn: Deer Camp only knows where a deer was first seen and which way it was going.
-4. **Gunshots** show a big red **!** above the stand that heard it, a dashed red arrow from that stand toward the edge of the map in the direction the sound came from, and a **BANG!**. These stay on the map for **30 seconds (real time)** and then fade away; the gunshot stays in the event list. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
+4. **Gunshots** show a big red **!** above the stand that heard it and a **BANG!** placed toward the edge of the map in the direction the sound came from, with that direction written on it (for example "NW"). The BANG! is the **color of the stand** that heard it. These stay on the map for **30 seconds (real time)** and then fade away; the gunshot stays in the event list. The arrow is a direction only, never the location of the shot. If several hunters heard the same shot, each report is shown separately.
 5. Tap any event in the list below the map to jump to it. Use **Deer**, **Gunshots** and **Show stands** to hide or show things.
 
 Events always appear at the time the hunter reported them, never the time they were uploaded.

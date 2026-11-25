@@ -25,6 +25,7 @@ class FakeSupabase {
     this.devices = new Map();        // phone user id -> hunter id
     this.campCode = null;
     this.adminPin = null;
+    this.purgedBefore = null;
     this.failures = new Map();       // phone user id -> wrong code count
     this.tables = { profiles: [], stands: [], hunting_sessions: [], deer_sightings: [], gunshot_reports: [] };
     this.writes = [];
@@ -138,10 +139,23 @@ class FakeSupabase {
       this.devices.set(user.id, p.id);
       return this.json(route, 200, { ok: true, hunter: { id: p.id, display_name: p.display_name, is_admin: p.is_admin } });
     }
-    if (fn === 'whoami') return this.json(route, 200, { hunter: me ? { id: me.id, display_name: me.display_name, is_admin: me.is_admin } : null });
+    if (fn === 'whoami') return this.json(route, 200, { hunter: me ? { id: me.id, display_name: me.display_name, is_admin: me.is_admin } : null, purged_before: this.purgedBefore });
     if (fn === 'leave_camp') { this.devices.delete(user.id); return this.json(route, 200, null); }
     if (!me || !me.is_admin) return this.json(route, 403, { code: '42501', message: 'Only the camp administrator can do this' });
     if (fn === 'release_hunter') { for (const [uid, h] of this.devices) if (h === a.hunter) this.devices.delete(uid); return this.json(route, 200, null); }
+    if (fn === 'purge_records_before') {
+      const cut = Date.parse(a.cutoff);
+      if (!(cut <= Date.now())) return this.json(route, 400, { message: 'Choose a date that is not in the future' });
+      const old = (r) => Date.parse(r.observed_at) < cut;
+      const nd = this.tables.deer_sightings.filter(old).length, ng = this.tables.gunshot_reports.filter(old).length;
+      this.tables.deer_sightings = this.tables.deer_sightings.filter((r) => !old(r));
+      this.tables.gunshot_reports = this.tables.gunshot_reports.filter((r) => !old(r));
+      const used = new Set(this.tables.deer_sightings.concat(this.tables.gunshot_reports).map((r) => r.session_id));
+      const before = this.tables.hunting_sessions.length;
+      this.tables.hunting_sessions = this.tables.hunting_sessions.filter((x) => !(Date.parse(x.started_at) < cut && !used.has(x.id)));
+      this.purgedBefore = new Date(Math.max(cut, Date.parse(this.purgedBefore || 0) || 0)).toISOString();
+      return this.json(route, 200, { deer_sightings: nd, gunshot_reports: ng, hunting_sessions: before - this.tables.hunting_sessions.length });
+    }
     if (fn === 'set_admin_pin') { this.adminPin = String(a.pin).trim(); return this.json(route, 200, null); }
     if (fn === 'set_camp_code') { this.campCode = String(a.code).trim(); this.failures.clear(); return this.json(route, 200, null); }
     if (fn === 'hunter_list') {

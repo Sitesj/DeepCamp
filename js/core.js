@@ -8,7 +8,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var APP_VERSION = '1.3.2';
+  var APP_VERSION = '1.4.0';
   var EXPORT_SCHEMA = 'deer-camp-hunt-export';
   var EXPORT_SCHEMA_VERSION = 2; // 2: per-type counts (buck/doe/fawn/unknown) in each sighting
 
@@ -189,6 +189,29 @@
     var start = new Date(p[0], p[1] - 1, p[2], 0, 0, 0, 0).getTime();
     var end = new Date(p[0], p[1] - 1, p[2] + 1, 0, 0, 0, 0).getTime();
     return { start: start, end: end };
+  }
+
+  // ------------------------------------------------------------ Stand colors
+  // Distinct, strong colors that work as a background for white BANG! text.
+  var STAND_COLORS = ['#1f6fd1', '#e8590c', '#7b2cbf', '#0f9d8a', '#c2255c', '#5c940d',
+    '#8d5524', '#d6336c', '#364fc7', '#b08900', '#2b8a3e', '#495057'];
+  var COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+  /** A stand's color: its saved color, or a steady fallback picked from its id. */
+  function standColor(stand) {
+    if (!stand) return STAND_COLORS[0];
+    if (stand.color && COLOR_RE.test(stand.color)) return stand.color;
+    var h = 0, id = String(stand.id || stand.name || '');
+    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return STAND_COLORS[h % STAND_COLORS.length];
+  }
+
+  /** The first palette color not already used by another active stand. */
+  function nextStandColor(stands) {
+    var used = {};
+    (stands || []).forEach(function (s) { if (s.is_active !== false) used[standColor(s).toLowerCase()] = true; });
+    for (var i = 0; i < STAND_COLORS.length; i++) if (!used[STAND_COLORS[i].toLowerCase()]) return STAND_COLORS[i];
+    return STAND_COLORS[(stands || []).length % STAND_COLORS.length];
   }
 
   // One sighting can be a mixed group: a count is kept for each type.
@@ -618,6 +641,9 @@
     localDayBounds: localDayBounds,
     deerLabel: deerLabel,
     deerCounts: deerCounts,
+    STAND_COLORS: STAND_COLORS,
+    standColor: standColor,
+    nextStandColor: nextStandColor,
     groupType: groupType,
     totalOf: totalOf,
     normalizeSighting: normalizeSighting,
