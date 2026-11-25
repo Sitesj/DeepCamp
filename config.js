@@ -11,5 +11,5 @@
  */
 window.DEER_CAMP_CONFIG = {
   supabaseUrl: 'https://fawfenikjwblcyloskuf.supabase.co',
-  supabaseKey: ''
+  supabaseKey: 'sb_publishable_ev6IySfDidiFLkv9jgSUVw_nGABwlo6'
 };
