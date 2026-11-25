@@ -540,15 +540,15 @@ label.field input, label.field select, label.field textarea, select.big, input.b
     <div class="card" id="setClearPhone">
       <h3>Clear records from this phone</h3>
       <p class="small muted" id="clrPhoneNote">Removes old records from this phone only, to keep it tidy. Anything still waiting to upload is always kept.</p>
-      <label class="field">Remove records from before<input type="date" id="clrPhoneDate"></label>
+      <label class="field">Remove records up to and including<input type="date" id="clrPhoneDate"></label>
       <button class="btn" id="clrPhoneBtn">CLEAR FROM THIS PHONE</button>
       <button class="btn-link hidden" id="clrRedownload" type="button">Download all camp records to this phone again</button>
     </div>
 
     <div class="card hidden" id="setPurgeCard">
       <h3>Clear old camp records (administrator)</h3>
-      <p class="small"><b>Permanently deletes</b> deer sightings, gunshot reports and empty hunts from before the date, for <b>everyone</b>. Each phone also removes its copies the next time it syncs. Download a backup first if you may want them later.</p>
-      <label class="field">Delete camp records from before<input type="date" id="purgeDate"></label>
+      <p class="small"><b>Permanently deletes</b> deer sightings, gunshot reports and empty hunts up to and including the date, for <b>everyone</b>. Each phone also removes its copies the next time it syncs. Download a backup first if you may want them later.</p>
+      <label class="field">Delete camp records up to and including<input type="date" id="purgeDate"></label>
       <button class="btn btn-danger" id="purgeBtn">DELETE OLD CAMP RECORDS</button>
     </div>
 
@@ -2309,8 +2309,8 @@ async function renderSettings() {
   $('#exShare').classList.toggle('hidden', !(navigator.canShare && window.File));
   renderImportInfo();
   renderLeftovers();
-  if (!$('#clrPhoneDate').value) $('#clrPhoneDate').value = C.localDateKey(new Date(Date.now() - 30 * 86400000).toISOString());
-  if (!$('#purgeDate').value) $('#purgeDate').value = C.localDateKey(new Date(Date.now() - 365 * 86400000).toISOString());
+  if (!$('#clrPhoneDate').value) $('#clrPhoneDate').value = todayKey();
+  if (!$('#purgeDate').value) $('#purgeDate').value = todayKey();
   $('#clrPhoneNote').textContent = isCloudId()
     ? 'Removes old records from this phone only, to keep it tidy. The camp keeps its copy, and anything still waiting to upload is always kept.'
     : 'Phone-only mode: this phone holds the only copy, so cleared records are gone for good. Download them first if you want to keep them.';
@@ -2379,12 +2379,20 @@ async function applyCampPurge(iso) {
   return n.records + n.hunts > 0;
 }
 
+/**
+ * End of the chosen day, but never later than (almost) now: the server does
+ * not accept a future time, and a phone's clock may be a little ahead.
+ */
+function clearCutoff(dateKey) {
+  return Math.min(C.localDayBounds(dateKey).end, Date.now() - 60000);
+}
+
 async function onClearPhone() {
   const d = $('#clrPhoneDate').value;
   if (!d) { toast('Choose a date'); return; }
-  const cutoff = C.localDayBounds(d).start;
+  const cutoff = clearCutoff(d);
   const cloud = isCloudId();
-  const msg = 'Remove records from before ' + fmtDateKey(d) + ' from this phone? ' +
+  const msg = 'Remove records up to and including ' + fmtDateKey(d) + ' from this phone? ' +
     (cloud ? 'The camp keeps its copy. Records still waiting to upload are kept.' : 'This phone has the only copy, so they will be gone for good.');
   if (!(await Dialog.confirm('Clear this phone?', msg, 'CLEAR', 'CANCEL', true))) return;
   const n = await clearLocalBefore(cutoff);
@@ -2410,7 +2418,7 @@ async function onPurgeCamp() {
   const d = $('#purgeDate').value;
   if (!d) { toast('Choose a date'); return; }
   if (!navigator.onLine) { toast('Deleting camp records needs an internet connection.'); return; }
-  const choice = await Dialog.choose('Delete camp records before ' + fmtDateKey(d) + '?',
+  const choice = await Dialog.choose('Delete camp records up to and including ' + fmtDateKey(d) + '?',
     'This permanently deletes them for everyone in the camp. It cannot be undone.', [
       { label: 'DOWNLOAD A BACKUP, THEN DELETE', value: 'backup', cls: 'btn-primary' },
       { label: 'DELETE WITHOUT A BACKUP', value: 'delete', cls: 'btn-danger' }
@@ -2425,7 +2433,7 @@ async function onPurgeCamp() {
     if (!(await Dialog.confirm('Backup downloaded', 'Check that the backup file saved, then tap DELETE to clear the old camp records.', 'DELETE', 'CANCEL', true))) return;
   }
   try {
-    const cutoff = new Date(C.localDayBounds(d).start).toISOString();
+    const cutoff = new Date(clearCutoff(d)).toISOString();
     const r = await Cloud.rpc('purge_records_before', { cutoff });
     await applyCampPurge(cutoff);
     toast('Deleted ' + r.deer_sightings + ' sighting(s), ' + r.gunshot_reports + ' gunshot report(s) and ' + r.hunting_sessions + ' hunt(s).', 7000);

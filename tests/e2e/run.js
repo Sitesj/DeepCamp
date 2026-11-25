@@ -638,8 +638,9 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await recordGunshot(jpage, 'S');                      // not uploaded yet
     const unsent = (await local(jpage, 'gunshots')).find((x) => x.direction === 'S');
     await menu(jpage, 'settings');
-    const tomorrow = await jpage.evaluate(() => window.DeerCore.localDateKey(new Date(Date.now() + 86400000).toISOString()));
-    await jpage.fill('#clrPhoneDate', tomorrow);
+    // the date starts on today: one tap clears everything up to now
+    assert((await jpage.inputValue('#clrPhoneDate')) === (await jpage.evaluate(() => window.DeerCore.localDateKey(new Date().toISOString()))), 'defaults to today');
+    await jpage.waitForTimeout(61000); // records must be more than a minute old (clock-safety margin)
     await jpage.click('#clrPhoneBtn');
     await jpage.locator('#dialogBox button[data-v="1"]').click();
     await waitFor(async () => (await local(jpage, 'sightings')).length === 0, 5000, 'local copies removed');
@@ -675,7 +676,7 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     const todayCount = fake.tables.deer_sightings.length - 1;
     await page.waitForSelector('#setPurgeCard:not(.hidden)');
     assert(!(await jpage.isVisible('#setPurgeCard')), 'hunters do not see the camp clear-out');
-    await page.fill('#purgeDate', '2026-01-01');
+    await page.fill('#purgeDate', '2025-12-31');   // up to and including New Year's Eve
     await page.click('#purgeBtn');
     await page.locator('#dialogBox button', { hasText: 'DELETE WITHOUT A BACKUP' }).click();
     await waitFor(() => !fake.tables.deer_sightings.some((x) => x.id === oldDeer.id), 8000, 'deleted on the server');

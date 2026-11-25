@@ -199,8 +199,8 @@ Sync is attempted when the app starts, when service comes back, when the app is 
 
 ### Clearing old records
 
-- **Every hunter — Settings → Clear records from this phone:** removes records from before a date from that phone only, to keep it tidy. The camp keeps its copy, anything still waiting to upload is never removed, and cleared records are not downloaded again (a link in the same card downloads them again if wanted). In phone-only mode the phone holds the only copy, so cleared records are gone for good.
-- **Administrator — Settings → Clear old camp records:** permanently deletes deer sightings, gunshot reports and empty hunts from before a date **for everyone**. The app offers to download a backup first. Every phone removes its copies the next time it syncs. A record still waiting to upload on some phone when the camp is cleared will still upload afterwards.
+- **Every hunter — Settings → Clear records from this phone:** removes records up to and including a date (it starts on today, so one tap clears everything) from that phone only, to keep it tidy. The camp keeps its copy, anything still waiting to upload is never removed, and cleared records are not downloaded again (a link in the same card downloads them again if wanted). In phone-only mode the phone holds the only copy, so cleared records are gone for good.
+- **Administrator — Settings → Clear old camp records:** permanently deletes deer sightings, gunshot reports and empty hunts up to and including a date **for everyone**. The app offers to download a backup first. Every phone removes its copies the next time it syncs. A record still waiting to upload on some phone when the camp is cleared will still upload afterwards.
 
 ## 11. Export JSON
 

@@ -12,7 +12,7 @@
  */
 // __BUILD__ is replaced with the commit id by the GitHub Pages workflow, so every
 // deploy installs fresh app files. Bump the version by hand if you deploy another way.
-const VERSION = 'deer-camp-v1.4.0-__BUILD__';
+const VERSION = 'deer-camp-v1.4.1-__BUILD__';
 const SHELL_CACHE = 'deer-camp-shell-' + VERSION;
 const SHELL = [
   './',
