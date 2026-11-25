@@ -530,6 +530,13 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <div id="setSyncErrors" class="small"></div>
     </div>
 
+    <div class="card hidden" id="setLeftovers">
+      <h3>Records from phone-only testing</h3>
+      <p id="setLeftoversText"></p>
+      <button class="btn" id="leftoverExport">DOWNLOAD THEM AS JSON</button>
+      <button class="btn btn-danger" id="leftoverRemove">REMOVE THEM FROM THIS PHONE</button>
+    </div>
+
     <div class="card">
       <h3>Download hunt JSON</h3>
       <div class="chips" id="exScope">
@@ -585,7 +592,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 
     <details class="card">
       <summary><b>Connection setup</b> (for the camp administrator)</summary>
-      <p class="small muted">Supabase project URL and PUBLISHABLE key. Never enter the secret/service-role key. Leave empty for phone-only mode.</p>
+      <p class="small muted">Supabase project URL and PUBLISHABLE key for this phone only. Never enter the secret/service-role key. Leave empty to use the camp's normal connection.</p>
       <label class="field">Supabase URL<input type="url" id="cfgUrl" placeholder="https://xxxx.supabase.co" autocapitalize="none"></label>
       <label class="field">Publishable key<input type="text" id="cfgKey" autocapitalize="none" spellcheck="false"></label>
       <button class="btn" id="cfgSave">SAVE CONNECTION</button>
@@ -1429,7 +1436,7 @@ async function renderHome() {
     $('#huntToggle').className = 'btn btn-inline btn-primary';
   }
   const day = C.localDayBounds(todayKey());
-  const inDay = (r) => { const t = Date.parse(r.observed_at); return t >= day.start && t < day.end && r.status !== 'voided'; };
+  const inDay = (r) => { const t = Date.parse(r.observed_at); return t >= day.start && t < day.end && r.status !== 'voided' && !isPhoneOnlyLeftover(r); };
   const sightings = (await DB.all('sightings')).filter(inDay);
   const gunshots = (await DB.all('gunshots')).filter(inDay);
   const mine = (r) => r.hunter_id === S.identity.hunter_id;
@@ -1725,9 +1732,18 @@ async function correctFlow(table, id) {
 }
 
 // ======================================================= Data access & filters
+/** Records made in phone-only mode never sync, so they are left out of the camp's views. */
+const isPhoneOnlyLeftover = (r) => isCloudId() && r._sync === 'local';
 async function campData() {
   const [stands, hunters, sessions, sightings, gunshots] = await Promise.all(['stands', 'hunters', 'sessions', 'sightings', 'gunshots'].map((s) => DB.all(s)));
-  return { stands, hunters, sessions, sightings, gunshots };
+  const keep = (r) => !isPhoneOnlyLeftover(r);
+  return { stands, hunters, sessions: sessions.filter(keep), sightings: sightings.filter(keep), gunshots: gunshots.filter(keep) };
+}
+async function phoneOnlyLeftovers() {
+  if (!isCloudId()) return { sessions: [], sightings: [], gunshots: [] };
+  const [sessions, sightings, gunshots] = await Promise.all(['sessions', 'sightings', 'gunshots'].map((x) => DB.all(x)));
+  const f = (r) => r._sync === 'local';
+  return { sessions: sessions.filter(f), sightings: sightings.filter(f), gunshots: gunshots.filter(f) };
 }
 async function importData() {
   const rows = await DB.all('imports');
@@ -2273,6 +2289,7 @@ async function renderSettings() {
   if (!$('#exTo').value) $('#exTo').value = todayKey();
   $('#exShare').classList.toggle('hidden', !(navigator.canShare && window.File));
   renderImportInfo();
+  renderLeftovers();
   // stands
   const canStands = !isCloudId() || (id && id.is_admin);
   $('#setStandsNote').textContent = isCloudId() ? (canStands ? 'Changes need an internet connection.' : 'Only the camp administrator can change stands.') : 'Stands on this phone.';
@@ -2293,6 +2310,40 @@ async function renderSettings() {
   try { if (navigator.storage && navigator.storage.persisted) persisted = (await navigator.storage.persisted()) ? 'yes' : 'no'; } catch (_) {}
   const swState = navigator.serviceWorker && navigator.serviceWorker.controller ? 'ready for offline use' : 'not yet ready for offline use (open once with internet, then reload)';
   $('#setAbout').innerHTML = 'Deer Camp version ' + C.APP_VERSION + '<br>App files: ' + swState + '<br>Storage protected from automatic cleanup: ' + persisted;
+}
+
+async function renderLeftovers() {
+  const l = await phoneOnlyLeftovers();
+  const n = l.sightings.length + l.gunshots.length;
+  $('#setLeftovers').classList.toggle('hidden', !(n || l.sessions.length));
+  $('#setLeftoversText').textContent = n + ' sighting/gunshot record(s) and ' + l.sessions.length + ' hunt(s) were made on this phone before it joined the camp. ' +
+    'They are not shared, are not shown on the camp maps, and cannot be uploaded. Download them if you want to keep them, then remove them.';
+}
+async function exportLeftovers() {
+  const l = await phoneOnlyLeftovers();
+  const stands = new Map();
+  l.sessions.concat(l.sightings, l.gunshots).forEach((r) => {
+    if (!stands.has(r.stand_id) && r.stand_latitude != null) stands.set(r.stand_id, { id: r.stand_id, name: 'Phone-only test stand', latitude: r.stand_latitude, longitude: r.stand_longitude, is_active: false });
+  });
+  const obj = C.buildExport({ stands: [...stands.values()], hunters: S.hunters, sessions: l.sessions, sightings: l.sightings, gunshots: l.gunshots }, { type: 'all' });
+  const name = 'deer-camp-phone-only-' + todayKey() + '.json';
+  const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+async function removeLeftovers() {
+  const l = await phoneOnlyLeftovers();
+  const n = l.sightings.length + l.gunshots.length + l.sessions.length;
+  if (!(await Dialog.confirm('Remove phone-only test records?', 'This removes ' + n + ' record(s) made before this phone joined the camp. They were never shared. Camp records are not touched. This cannot be undone.', 'REMOVE', 'KEEP THEM', true))) return;
+  await DB.write(['sessions', 'sightings', 'gunshots'], (t) => {
+    l.sessions.forEach((r) => t.objectStore('sessions').delete(r.id));
+    l.sightings.forEach((r) => t.objectStore('sightings').delete(r.id));
+    l.gunshots.forEach((r) => t.objectStore('gunshots').delete(r.id));
+  });
+  if (S.lastRecord) S.lastRecord = null;
+  toast('Phone-only test records removed');
+  renderLeftovers();
 }
 
 async function renderSettingsSync() {
@@ -2341,6 +2392,18 @@ async function saveStandForm(f, err, s) {
   };
   const errs = C.validateStand(rec);
   if (errs.length) { err(errs.join('. ')); return false; }
+  const others = S.stands.filter((x) => x.id !== rec.id && x.is_active !== false);
+  if (others.length && f.dataset.farOk !== latTxt + ',' + lngTxt) {
+    const km = Math.min(...others.map((x) => C.distanceMeters(x.latitude, x.longitude, rec.latitude, rec.longitude))) / 1000;
+    if (km > 80) {
+      const flipped = Math.min(...others.map((x) => C.distanceMeters(x.latitude, x.longitude, rec.latitude, -rec.longitude))) / 1000;
+      f.dataset.farOk = latTxt + ',' + lngTxt;
+      err('This spot is about ' + Math.round(km * 0.621).toLocaleString() + ' miles from your other stands.' +
+        (flipped < 80 ? ' It looks like the minus sign (-) is missing from the longitude.' : ' Please check the numbers.') +
+        ' Tap SAVE STAND again to save it anyway.');
+      return false;
+    }
+  }
   if (isCloudId()) {
     if (!navigator.onLine) { err('Changing stands needs an internet connection.'); return false; }
     const q = s ? Cloud.sb.from('stands').update({ name: rec.name, latitude: rec.latitude, longitude: rec.longitude, description: rec.description, is_active: rec.is_active }).eq('id', rec.id).select()
@@ -2349,7 +2412,7 @@ async function saveStandForm(f, err, s) {
     if (error || !data || !data.length) { err('Not saved: ' + (error ? error.message : 'no permission')); return false; }
     await DB.put('stands', data[0]);
   } else {
-    await DB.put('stands', Object.assign({}, s || {}, rec));
+    await DB.put('stands', Object.assign({}, s || {}, rec, { _local_mode: true }));
   }
   await loadCatalog();
   toast('Stand saved');
@@ -2582,6 +2645,8 @@ function bind() {
   };
   $('#setSwitch').onclick = signOutFlow;
   $('#setSyncNow').onclick = () => Sync.run('manual');
+  $('#leftoverExport').onclick = exportLeftovers;
+  $('#leftoverRemove').onclick = removeLeftovers;
   $('#setAddStand').onclick = () => editStand(null);
   $('#addHunterBtn').onclick = addHunter;
   $('#setCampCodeBtn').onclick = changeCampCode;

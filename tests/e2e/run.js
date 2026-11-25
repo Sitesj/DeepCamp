@@ -62,7 +62,11 @@ async function makeContext(browser, fake, opts) {
   if (fake) {
     await ctx.addInitScript((url) => { localStorage.setItem('deercamp-config', JSON.stringify({ supabaseUrl: url, supabaseKey: 'sb_publishable_test' })); }, SUPA);
     await ctx.route(SUPA + '/**', (route) => fake.handle(route));
+  } else {
+    // phone-only mode: serve an empty config.js (as before the camp set up Supabase)
+    await ctx.route(/\/config\.js(\?|$)/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: "window.DEER_CAMP_CONFIG = { supabaseUrl: '', supabaseKey: '' };" }));
   }
+  await ctx.route(/\.supabase\.co\//, (r) => r.abort('blockedbyclient')); // never touch the real project from tests
   // No real outside traffic: imagery fails (as with no service); weather is faked.
   await ctx.route(/arcgisonline\.com|openstreetmap\.org/, (r) => r.abort('internetdisconnected'));
   await ctx.route(/api\.open-meteo\.com/, (r) => {
@@ -607,6 +611,66 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     assert(msg === 'SIGHTING SAVED ON PHONE', msg);
     assert((await p.textContent('#syncStatus')).includes('Saved on Phone'), 'status');
     assert((await local(p, 'outbox')).length === 0, 'nothing queued for upload');
+    await ctx.close();
+  });
+
+  await test('Stand with a missing minus sign on the longitude is caught', async () => {
+    await menu(page, 'settings');
+    await page.click('#setAddStand');
+    await page.fill('#dlgForm input[name="name"]', 'Typo Stand');
+    await page.fill('#dlgForm input[name="lat"]', '38.5010');
+    await page.fill('#dlgForm input[name="lng"]', '90.4950');
+    await page.click('#dlgOk');
+    await waitFor(async () => (await page.textContent('#dlgErr')).includes('minus sign'), 5000, 'minus sign warning');
+    assert(!fake.tables.stands.some((x) => x.name === 'Typo Stand'), 'not saved yet');
+    await page.fill('#dlgForm input[name="lng"]', '-90.4950');
+    await page.click('#dlgOk');
+    await waitFor(() => fake.tables.stands.some((x) => x.name === 'Typo Stand' && x.longitude === -90.495), 5000, 'saved with the fixed longitude');
+  });
+
+  await test('Records made in phone-only mode are not shown once the phone joins the camp, and can be removed', async () => {
+    const frankId = fake.addHunter('Frank');
+    const ctx = await makeContext(browser, null);
+    const p = await open(ctx, base);
+    await p.waitForSelector('#screen-hunter.active');
+    await p.fill('#newLocalHunter', 'Tester');
+    await p.click('#addLocalHunter');
+    await p.locator('#localHunterList button', { hasText: 'Tester' }).click();
+    await p.click('#goAddStand');
+    await p.fill('#dlgForm input[name="name"]', 'Test Stand');
+    await p.fill('#dlgForm input[name="lat"]', '38.5');
+    await p.fill('#dlgForm input[name="lng"]', '90.5'); // the typo that puts a stand in China
+    await p.click('#dlgOk');
+    await waitFor(async () => (await p.textContent('#setStandList')).includes('Test Stand'), 5000, 'test stand');
+    await p.click('#menuBtn'); await p.click('#menu [data-go="home"]');
+    await chooseStand(p, 'Test Stand');
+    await recordDeer(p, { first: 'N', dist: '0–25', head: null, qty: 1, type: 'doe' });
+    // now the camp connection is set up and this phone joins
+    await ctx.route(SUPA + '/**', (route) => fake.handle(route));
+    await p.evaluate((url) => localStorage.setItem('deercamp-config', JSON.stringify({ supabaseUrl: url, supabaseKey: 'sb_publishable_test' })), SUPA);
+    await p.reload();
+    await p.waitForFunction(() => window.DeerCampApp);
+    await joinCamp(p, 'Frank', '777888');
+    await chooseStand(p, 'North Ridge');
+    await menu(p, 'map');
+    await waitFor(async () => (await p.locator('#liveMap .stand-pin').count()) >= 3, 8000, 'camp stands on map');
+    const names = await p.locator('#liveMap .stand-pin .nm').allTextContents();
+    assert(!names.some((n) => /unknown/i.test(n)), 'no "Unknown stand" on the camp map: ' + names);
+    await menu(p, 'activity');
+    await p.locator('#actRange .chip[data-r="all"]').click();
+    await p.waitForTimeout(300);
+    assert(!(await p.textContent('#actList')).includes('Tester'), 'phone-only record not in the camp feed');
+    await menu(p, 'settings');
+    await waitFor(async () => p.isVisible('#setLeftovers'), 5000, 'leftover card');
+    assert((await p.textContent('#setLeftoversText')).includes('1 sighting/gunshot'), 'counts the leftovers');
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#leftoverExport')]);
+    const exp = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+    assert(exp.deer_sightings.length === 1 && exp.stands.length === 1, 'leftovers can be downloaded with their stand');
+    await p.click('#leftoverRemove');
+    await p.locator('#dialogBox button[data-v="1"]').click();
+    await waitFor(async () => !(await p.isVisible('#setLeftovers')), 5000, 'leftovers removed');
+    assert((await local(p, 'sightings')).every((r) => r._sync !== 'local'), 'gone from this phone');
+    assert(!fake.tables.deer_sightings.some((r) => r.hunter_id === frankId), 'nothing was uploaded');
     await ctx.close();
   });
 

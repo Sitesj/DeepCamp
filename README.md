@@ -150,6 +150,7 @@ As an administrator, open **☰ → Settings → Stands → ADD STAND** (or **ED
 - **Stand name** — what hunters will see, e.g. "North Ridge".
 - **Latitude / Longitude** in decimal degrees, e.g. `38.12345` and `-90.12345`. You can paste `38.12345, -90.12345` (as copied from Google Maps) into the Latitude box.
 - **📍 USE MY CURRENT LOCATION** fills in the coordinates from the phone's GPS — easiest when you are standing at the stand.
+- If the spot is far from your other stands, Deer Camp warns you before saving. The usual cause is a missing minus sign: in the U.S. the longitude is negative (for example `-90.12345`); without the minus sign the stand lands in Asia.
 - **Active** — untick to hide a stand you no longer hunt. Old records keep their location because each record stores the stand's coordinates at the time it was made.
 
 Changing stands needs an internet connection. Every phone picks up the new list the next time it syncs.
@@ -321,4 +322,4 @@ The database tests check, on real PostgreSQL, that hunters cannot write records 
 - **Location estimates are approximate.** They come from a compass direction (±11.25°) and a distance range. The heat map shows where deer were *reported*, not how many deer there are; two hunters may report the same deer, and several gunshot reports may be the same shot. Deer Camp never merges reports.
 - **Dates** are grouped by the phone's own time zone. Timestamps are stored in UTC.
 - **Editing `config.js`** after phones have installed the app requires a new deployment (so the service worker picks it up), or entering the values in Settings → Connection setup.
-- Records made in **phone-only mode** cannot later be uploaded to Supabase (export them as JSON instead).
+- Records made in **phone-only mode** cannot later be uploaded to Supabase. Once the phone joins a camp they are hidden from the camp's maps, feed and replay, and **Settings → Records from phone-only testing** lets you download them as JSON or remove them.
