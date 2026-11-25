@@ -41,14 +41,15 @@ Deer Camp is a phone app for a small hunting group. Each hunter picks their name
 
 ## 2. Apply the database migration
 
-The schema is in [`supabase/migrations/`](supabase/migrations/), as three files that run **in order, each once**:
+The schema is in [`supabase/migrations/`](supabase/migrations/), as four files that run **in order**:
 
 1. `20261122000001_deer_camp_schema.sql` — the tables, security and triggers
 2. `20261122000002_mixed_deer_groups.sql` — buck / doe / fawn / unknown counts, so one sighting can be a mixed group
 3. `20261125000003_camp_code_sign_in.sql` — sign-in with a camp code instead of e-mail
+4. `20261125000004_admin_pin.sql` — a separate admin PIN for joining as an administrator
 
-For a **new project**, [`supabase/setup-all-in-one.sql`](supabase/setup-all-in-one.sql) is the same three files joined together, so you only paste once.
-If your project **already ran the first file**, use [`supabase/upgrade-existing-project.sql`](supabase/upgrade-existing-project.sql) instead (files 2 and 3 joined; safe even if file 2 was already run).
+For a **new project**, [`supabase/setup-all-in-one.sql`](supabase/setup-all-in-one.sql) is all the files joined together, so you only paste once.
+If your project **already ran the first file**, use [`supabase/upgrade-existing-project.sql`](supabase/upgrade-existing-project.sql) instead (files 2 onward joined; safe to run again if some or all of it was run before).
 
 Together they create:
 
@@ -56,7 +57,7 @@ Together they create:
 |---|---|
 | `profiles` | One row per hunter: display name, administrator flag, active flag |
 | `hunter_devices` | Which phone is signed in as which hunter (supporting table; one phone per hunter name) |
-| `camp_settings` | The camp code, stored only as a bcrypt hash (supporting table) |
+| `camp_settings` | The camp code and the admin PIN, each stored only as a bcrypt hash (supporting table) |
 | `join_attempts` | Wrong camp-code tries per phone, for the lock-out (supporting table) |
 | `stands` | Stand name, latitude, longitude, description, active flag |
 | `hunting_sessions` | Start / end of each hunt (hunter + stand) |
@@ -78,6 +79,7 @@ supabase db push
 
 - A phone sees nothing until it has **joined the camp**: entered the right camp code and picked an active hunter name.
 - The camp code is checked on the server and stored only as a hash. After 5 wrong tries a phone is locked out for 15 minutes.
+- Joining as a name marked **administrator** also needs the separate **admin PIN** (also hashed, and it must differ from the camp code). Wrong admin PINs count toward the same lock-out.
 - A hunter name can be in use on **one phone at a time**. Nobody else can pick that name, even with the camp code, until the hunter switches off it or the administrator releases it.
 - A phone can only create sessions, sightings and gunshot reports **as the hunter it joined as**. Choosing a different name in the app cannot post as someone else.
 - Sightings and gunshots can only be attached to the hunter's **own** hunting session.
@@ -94,14 +96,15 @@ In the Supabase dashboard:
 1. **Authentication → Sign In / Providers**: turn **on** "Allow anonymous sign-ins". (Without this the app shows "Camp sign-in is not turned on yet".)
 2. Leave the default session settings. Phones stay signed in and refresh automatically whenever they have service.
 
-**Add yourself as the first hunter and administrator, and set the camp code.** In the **SQL Editor**, run (with your own name and a code of at least 6 digits):
+**Add yourself as the first hunter and administrator, and set the camp code and the admin PIN.** In the **SQL Editor**, run (with your own name, a camp code for everyone, and a *different* admin PIN for you — each at least 6 digits):
 
 ```sql
 insert into public.profiles (display_name, is_admin, is_active) values ('Your Name', true, true);
 select public.set_camp_code('123456');
+select public.set_admin_pin('654321');
 ```
 
-Then open the app, type the camp code, and tap your name.
+Then open the app, type the camp code, tap your name, and enter the admin PIN.
 
 ## 4. Configure the public Supabase connection
 
@@ -136,6 +139,7 @@ Also in Settings → Hunters you can:
 - **RELEASE PHONE** when a hunter gets a new phone or loses one: their name becomes free to join on another phone. Nothing is deleted; anything still waiting on the old phone uploads if that phone joins again as the same hunter.
 - **MAKE ADMIN / REMOVE ADMIN**.
 - **CHANGE CAMP CODE**. Hunters already joined stay joined; only new joins need the new code.
+- **CHANGE ADMIN PIN**. Needed to join as any administrator; give it only to administrators. When you make someone an administrator who has not joined yet, they will need it to join.
 
 **Switch hunter** (Settings) frees the name on this phone, so a phone can be handed to another hunter. Records not yet uploaded stay on the phone and upload when their hunter joins on it again; they are never uploaded under someone else's name.
 

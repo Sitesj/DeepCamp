@@ -38,6 +38,8 @@ insert into public.profiles (id, display_name, is_admin, is_active) values
   ('b0000000-0000-4000-8000-000000000002', 'Mike', false, true),
   ('c0000000-0000-4000-8000-000000000003', 'John', false, true);
 select public.set_camp_code('482913');
+select public.set_admin_pin('135790');
+select pg_temp.expect_fail($$select public.set_admin_pin('482913')$$, 'admin PIN cannot be the same as the camp code');
 select pg_temp.expect((select code_hash <> '482913' and code_hash like '$2%' from camp_settings), 'camp code stored only as a bcrypt hash');
 select pg_temp.expect((select count(*) from profiles) = 3, 'new phones do not create profiles');
 
@@ -47,7 +49,12 @@ select pg_temp.expect((select count(*) from profiles) = 0, 'phone not joined yet
 select pg_temp.expect((select count(*) from stands) = 0, 'phone not joined yet sees no stands');
 select pg_temp.expect(public.camp_roster('111111') ->> 'error' = 'wrong', 'wrong camp code gives no hunter list');
 select pg_temp.expect(jsonb_array_length(public.camp_roster(' 482913 ') -> 'hunters') = 3, 'right camp code lists the hunters');
-select pg_temp.expect((public.join_camp('482913', 'a0000000-0000-4000-8000-000000000001') ->> 'ok')::boolean, 'admin phone joins as Al');
+select pg_temp.expect((select (h ->> 'is_admin')::boolean from jsonb_array_elements(public.camp_roster('482913') -> 'hunters') h
+  where h ->> 'display_name' = 'Al'), 'roster marks administrator names');
+select pg_temp.expect(public.join_camp('482913', 'a0000000-0000-4000-8000-000000000001') ->> 'error' = 'admin_pin_needed', 'admin name needs the admin PIN');
+select pg_temp.expect(public.join_camp('482913', 'a0000000-0000-4000-8000-000000000001', '000000') ->> 'error' = 'wrong_admin_pin', 'wrong admin PIN refused');
+select pg_temp.expect((public.join_camp('482913', 'a0000000-0000-4000-8000-000000000001', '135790') ->> 'ok')::boolean, 'admin phone joins as Al with the admin PIN');
+select pg_temp.expect((public.join_camp('482913', 'a0000000-0000-4000-8000-000000000001') ->> 'ok')::boolean, 'rejoining on the same phone does not ask again');
 select pg_temp.expect(public.whoami() -> 'hunter' ->> 'display_name' = 'Al', 'whoami');
 reset role;
 
@@ -72,6 +79,7 @@ select pg_temp.expect(public.camp_roster('482913') ->> 'error' = 'locked', 'lock
 select pg_temp.expect_fail($$select * from camp_settings$$, 'camp code hash cannot be read');
 select pg_temp.expect_fail($$select * from hunter_devices$$, 'phone links cannot be read directly');
 select pg_temp.expect_fail($$select public.set_camp_code('999999')$$, 'non-admin cannot change the camp code');
+select pg_temp.expect_fail($$select public.set_admin_pin('999999')$$, 'non-admin cannot change the admin PIN');
 reset role;
 
 -- ---- Admin creates stands
@@ -221,6 +229,8 @@ select pg_temp.expect_fail($$update profiles set is_admin = false where id = 'a0
 select pg_temp.expect_fail($$update profiles set created_at = now() where id = 'b0000000-0000-4000-8000-000000000002'$$,
   'admin cannot edit protected profile columns');
 select public.set_camp_code('777888');
+select public.set_admin_pin('246802');
+select pg_temp.expect_fail($$select public.set_camp_code('246802')$$, 'camp code cannot be the same as the admin PIN');
 reset role;
 
 -- Mike's old phone no longer writes as Mike once released

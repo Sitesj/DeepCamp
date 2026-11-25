@@ -12,13 +12,13 @@
 --  * The camp code is stored only as a bcrypt hash and is checked on the
 --    server, with a lock-out after 5 wrong tries (15 minutes).
 --
--- Run this AFTER migrations 1 and 2.
+-- Run this AFTER migrations 1 and 2. Safe to run more than once.
 -- Supabase: Authentication → Sign In / Providers → turn ON "Allow anonymous sign-ins".
 
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
-create table public.camp_settings (
+create table if not exists public.camp_settings (
   id          integer primary key default 1 check (id = 1),
   code_hash   text,
   updated_at  timestamptz not null default now()
@@ -26,16 +26,16 @@ create table public.camp_settings (
 insert into public.camp_settings (id) values (1) on conflict do nothing;
 
 -- Which hunter each phone (Supabase auth user) is signed in as.
-create table public.hunter_devices (
+create table if not exists public.hunter_devices (
   user_id       uuid primary key references auth.users (id) on delete cascade,
   hunter_id     uuid not null references public.profiles (id) on delete cascade,
   linked_at     timestamptz not null default now(),
   last_seen_at  timestamptz not null default now()
 );
-create unique index hunter_devices_one_phone_per_hunter on public.hunter_devices (hunter_id);
+create unique index if not exists hunter_devices_one_phone_per_hunter on public.hunter_devices (hunter_id);
 
 -- Wrong camp-code attempts per phone (lock-out after 5 within 15 minutes).
-create table public.join_attempts (
+create table if not exists public.join_attempts (
   user_id          uuid primary key references auth.users (id) on delete cascade,
   failures         integer not null default 0,
   last_failure_at  timestamptz not null default now()
@@ -94,6 +94,7 @@ alter table public.gunshot_reports  alter column hunter_id set default public.cu
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles for select to authenticated
   using (public.is_active_member());
+drop policy if exists profiles_admin_insert on public.profiles;
 create policy profiles_admin_insert on public.profiles for insert to authenticated
   with check (public.is_admin());
 

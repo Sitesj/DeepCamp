@@ -24,6 +24,7 @@ class FakeSupabase {
     this.users = [];                 // anonymous phone accounts
     this.devices = new Map();        // phone user id -> hunter id
     this.campCode = null;
+    this.adminPin = null;
     this.failures = new Map();       // phone user id -> wrong code count
     this.tables = { profiles: [], stands: [], hunting_sessions: [], deer_sightings: [], gunshot_reports: [] };
     this.writes = [];
@@ -118,7 +119,7 @@ class FakeSupabase {
       const r = this.checkCode(user, a.code);
       if (r !== 'ok') return this.json(route, 200, { ok: false, error: r });
       return this.json(route, 200, { ok: true, hunters: this.tables.profiles.filter((p) => p.is_active)
-        .map((p) => ({ id: p.id, display_name: p.display_name, in_use: !!inUseBy(p.id), mine: this.devices.get(user.id) === p.id })) });
+        .map((p) => ({ id: p.id, display_name: p.display_name, is_admin: p.is_admin, in_use: !!inUseBy(p.id), mine: this.devices.get(user.id) === p.id })) });
     }
     if (fn === 'join_camp') {
       const r = this.checkCode(user, a.code);
@@ -126,6 +127,14 @@ class FakeSupabase {
       const p = this.tables.profiles.find((x) => x.id === a.hunter && x.is_active);
       if (!p) return this.json(route, 200, { ok: false, error: 'no_such_hunter' });
       if (inUseBy(p.id)) return this.json(route, 200, { ok: false, error: 'in_use' });
+      if (p.is_admin && this.devices.get(user.id) !== p.id) {
+        if (!this.adminPin) return this.json(route, 200, { ok: false, error: 'admin_pin_not_set' });
+        if (!a.admin_pin) return this.json(route, 200, { ok: false, error: 'admin_pin_needed' });
+        if (String(a.admin_pin).trim() !== this.adminPin) {
+          this.failures.set(user.id, (this.failures.get(user.id) || 0) + 1);
+          return this.json(route, 200, { ok: false, error: 'wrong_admin_pin' });
+        }
+      }
       this.devices.set(user.id, p.id);
       return this.json(route, 200, { ok: true, hunter: { id: p.id, display_name: p.display_name, is_admin: p.is_admin } });
     }
@@ -133,6 +142,7 @@ class FakeSupabase {
     if (fn === 'leave_camp') { this.devices.delete(user.id); return this.json(route, 200, null); }
     if (!me || !me.is_admin) return this.json(route, 403, { code: '42501', message: 'Only the camp administrator can do this' });
     if (fn === 'release_hunter') { for (const [uid, h] of this.devices) if (h === a.hunter) this.devices.delete(uid); return this.json(route, 200, null); }
+    if (fn === 'set_admin_pin') { this.adminPin = String(a.pin).trim(); return this.json(route, 200, null); }
     if (fn === 'set_camp_code') { this.campCode = String(a.code).trim(); this.failures.clear(); return this.json(route, 200, null); }
     if (fn === 'hunter_list') {
       return this.json(route, 200, this.tables.profiles.map((p) => ({ ...p, in_use: [...this.devices.values()].includes(p.id), last_seen_at: null })));

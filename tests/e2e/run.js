@@ -83,13 +83,19 @@ async function open(ctx, base) {
   return page;
 }
 const CAMP_CODE = '482913';
-/** Join the camp on this phone: type the camp code, then tap the hunter's name. */
-async function joinCamp(page, name, code) {
+const ADMIN_PIN = '135790';
+/** Join the camp on this phone: type the camp code, tap the hunter's name (and the admin PIN for administrators). */
+async function joinCamp(page, name, code, adminPin) {
   await page.waitForSelector('#screen-signin.active');
   await page.fill('#jnCode', code || CAMP_CODE);
   await page.click('#jnSubmit');
   await page.waitForSelector('#joinNameCard:not(.hidden)');
   await page.locator('#jnNames button', { hasText: name }).click();
+  if (adminPin) {
+    await page.waitForSelector('#joinPinCard:not(.hidden)');
+    await page.fill('#jnPin', adminPin);
+    await page.click('#jnPinSubmit');
+  }
 }
 const btn = (page, text) => page.locator('button:visible', { hasText: text }).first();
 async function chooseStand(page, name) {
@@ -139,6 +145,7 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
   const johnId = fake.addHunter('John');
   fake.addHunter('Dave');
   fake.campCode = CAMP_CODE;
+  fake.adminPin = ADMIN_PIN;
   const ridge = fake.addStand('North Ridge', 38.5000, -90.5000);
   const creek = fake.addStand('Creek Stand', 38.5040, -90.4930);
   fake.addStand('South Woods', 38.4965, -90.4975);
@@ -154,7 +161,23 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await page.fill('#jnCode', '111111');
     await page.click('#jnSubmit');
     await waitFor(async () => (await page.textContent('#jnError')).includes('not right'), 5000, 'wrong code message');
-    await joinCamp(page, 'Mike');
+    // Mike is an administrator: the camp code alone is not enough
+    await page.fill('#jnCode', CAMP_CODE);
+    await page.click('#jnSubmit');
+    await page.waitForSelector('#joinNameCard:not(.hidden)');
+    assert((await page.textContent('#jnNames')).includes('needs the admin PIN'), 'admin name is marked');
+    await page.locator('#jnNames button', { hasText: 'Mike' }).click();
+    await page.waitForSelector('#joinPinCard:not(.hidden)');
+    await shot(page, '01c-admin-pin');
+    await page.fill('#jnPin', '000000');
+    await page.click('#jnPinSubmit');
+    await waitFor(async () => (await page.textContent('#jnPinError')).includes('not right'), 5000, 'wrong admin PIN message');
+    assert(!fake.devices.size, 'not joined with a wrong admin PIN');
+    await page.fill('#jnPin', CAMP_CODE);
+    await page.click('#jnPinSubmit');
+    await waitFor(async () => (await page.textContent('#jnPinError')).includes('not right'), 5000, 'camp code is not the admin PIN');
+    await page.fill('#jnPin', ADMIN_PIN);
+    await page.click('#jnPinSubmit');
     await chooseStand(page, 'North Ridge');
     await shot(page, '02-home');
     assert((await page.textContent('#homeHunter')) === 'Mike', 'hunter name shown');
@@ -538,6 +561,10 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await page.click('#setCampCodeBtn');
     await page.locator('#dialogBox button[data-v="1"]').click();
     await waitFor(() => fake.campCode === '777888', 5000, 'code changed');
+    await page.fill('#newAdminPin', '246802');
+    await page.click('#setAdminPinBtn');
+    await page.locator('#dialogBox button[data-v="1"]').click();
+    await waitFor(() => fake.adminPin === '246802', 5000, 'admin PIN changed');
     // the new code works (lock-out was cleared), and Earl can join
     await p.evaluate(() => { document.getElementById('jnError').textContent = ''; });
     await joinCamp(p, 'Earl', '777888');

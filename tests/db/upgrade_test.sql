@@ -12,3 +12,12 @@ do $$ begin
   end if;
   raise notice 'ok: existing e-mail account keeps working after the camp-code change';
 end $$;
+do $$ begin
+  if (select count(*) from pg_proc where proname = 'join_camp' and pronamespace = 'public'::regnamespace) <> 1 then
+    raise exception 'UPGRADE FAILED: join_camp should exist exactly once (no old version left)';
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'camp_settings' and column_name = 'admin_pin_hash') then
+    raise exception 'UPGRADE FAILED: admin PIN column missing';
+  end if;
+  raise notice 'ok: camp code and admin PIN functions are current';
+end $$;
