@@ -8,7 +8,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var APP_VERSION = '1.1.1';
+  var APP_VERSION = '1.2.0';
   var EXPORT_SCHEMA = 'deer-camp-hunt-export';
   var EXPORT_SCHEMA_VERSION = 2; // 2: per-type counts (buck/doe/fawn/unknown) in each sighting
 

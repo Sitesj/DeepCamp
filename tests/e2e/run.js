@@ -82,11 +82,14 @@ async function open(ctx, base) {
   await page.waitForFunction(() => window.DeerCampApp);
   return page;
 }
-async function signIn(page, email, pw) {
+const CAMP_CODE = '482913';
+/** Join the camp on this phone: type the camp code, then tap the hunter's name. */
+async function joinCamp(page, name, code) {
   await page.waitForSelector('#screen-signin.active');
-  await page.fill('#siEmail', email);
-  await page.fill('#siPassword', pw);
-  await page.click('#siSubmit');
+  await page.fill('#jnCode', code || CAMP_CODE);
+  await page.click('#jnSubmit');
+  await page.waitForSelector('#joinNameCard:not(.hidden)');
+  await page.locator('#jnNames button', { hasText: name }).click();
 }
 const btn = (page, text) => page.locator('button:visible', { hasText: text }).first();
 async function chooseStand(page, name) {
@@ -132,8 +135,10 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
   const base = 'http://127.0.0.1:' + srv.address().port;
   const browser = await playwright.chromium.launch();
   const fake = new FakeSupabase(SUPA);
-  const mikeId = fake.addUser('mike@camp.test', 'secret-mike', 'Mike', { admin: true });
-  const johnId = fake.addUser('john@camp.test', 'secret-john', 'John');
+  const mikeId = fake.addHunter('Mike', { admin: true });
+  const johnId = fake.addHunter('John');
+  fake.addHunter('Dave');
+  fake.campCode = CAMP_CODE;
   const ridge = fake.addStand('North Ridge', 38.5000, -90.5000);
   const creek = fake.addStand('Creek Stand', 38.5040, -90.4930);
   fake.addStand('South Woods', 38.4965, -90.4975);
@@ -144,7 +149,12 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
 
   await test('A: sign in, select stand, start hunt, record deer sighting, saved locally and synced', async () => {
     await shot(page, '01-signin');
-    await signIn(page, 'mike@camp.test', 'secret-mike');
+    // a wrong code is refused
+    await page.waitForSelector('#screen-signin.active');
+    await page.fill('#jnCode', '111111');
+    await page.click('#jnSubmit');
+    await waitFor(async () => (await page.textContent('#jnError')).includes('not right'), 5000, 'wrong code message');
+    await joinCamp(page, 'Mike');
     await chooseStand(page, 'North Ridge');
     await shot(page, '02-home');
     assert((await page.textContent('#homeHunter')) === 'Mike', 'hunter name shown');
@@ -322,7 +332,15 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
   const johnCtx = await makeContext(browser, fake);
   let jpage = await open(johnCtx, base);
   await test('E: two hunters at different stands; both see shared records', async () => {
-    await signIn(jpage, 'john@camp.test', 'secret-john');
+    await jpage.waitForSelector('#screen-signin.active');
+    await jpage.fill('#jnCode', CAMP_CODE);
+    await jpage.click('#jnSubmit');
+    await jpage.waitForSelector('#joinNameCard:not(.hidden)');
+    // Mike's name is locked to Mike's phone
+    assert(await jpage.locator('#jnNames button', { hasText: 'Mike' }).isDisabled(), "Mike's name cannot be picked on John's phone");
+    assert((await jpage.textContent('#jnNames')).includes('In use on another phone'), 'shows why');
+    await shot(jpage, '01b-pick-name');
+    await jpage.locator('#jnNames button', { hasText: 'John' }).click();
     await chooseStand(jpage, 'Creek Stand');
     await recordGunshot(jpage, 'NW');
     await recordDeer(jpage, { first: 'E', dist: '25–50', head: 'N', qty: 1, type: 'buck' });
@@ -345,22 +363,22 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     const held = (await local(jpage, 'gunshots')).find((x) => x.direction === 'E');
     await johnCtx.setOffline(false);
     await menu(jpage, 'settings');
-    // John hands the phone to Mike without syncing first
+    // John hands the phone to Dave without syncing first
     fake.down = true;
     await jpage.click('#setSwitch');
     await jpage.locator('#dialogBox button[data-v="1"]').click();
     fake.down = false;
-    await signIn(jpage, 'mike@camp.test', 'secret-mike');
+    await joinCamp(jpage, 'Dave');
     await jpage.waitForSelector('#screen-home.active, #screen-stand.active');
     await jpage.waitForTimeout(1500);
-    assert(!fake.tables.gunshot_reports.some((x) => x.id === held.id), "John's record NOT uploaded under Mike");
+    assert(!fake.tables.gunshot_reports.some((x) => x.id === held.id), "John's record NOT uploaded under Dave");
     const ob = await local(jpage, 'outbox');
     assert(ob.some((o) => o.record_id === held.id && o.hunter_id === johnId), 'still queued for John');
     // back to John: it uploads
     await menu(jpage, 'settings');
     await jpage.click('#setSwitch');
     await jpage.locator('#dialogBox button[data-v="1"]').click();
-    await signIn(jpage, 'john@camp.test', 'secret-john');
+    await joinCamp(jpage, 'John');
     await waitFor(() => fake.tables.gunshot_reports.some((x) => x.id === held.id && x.hunter_id === johnId), 10000, 'uploaded as John');
   });
 
@@ -492,13 +510,53 @@ const menu = async (page, go) => { await page.click('#menuBtn'); await page.clic
     await mikeCtx.setOffline(false);
   });
 
-  await test('Inactive (uninvited) account cannot record', async () => {
+  await test('Camp code: wrong codes lock out; admin adds a hunter, releases a phone, changes the code', async () => {
     const ctx = await makeContext(browser, fake);
     const p = await open(ctx, base);
-    fake.addUser('stranger@x.test', 'secret-x', 'Stranger', { active: false });
-    await signIn(p, 'stranger@x.test', 'secret-x');
-    await p.waitForSelector('#siPending:not(.hidden)');
-    assert(!(await p.isVisible('#screen-home')), 'no home screen');
+    await p.waitForSelector('#screen-signin.active');
+    for (let i = 0; i < 5; i++) {
+      await p.fill('#jnCode', '00000' + i);
+      await p.click('#jnSubmit');
+      await waitFor(async () => (await p.textContent('#jnError')).length > 0, 5000, 'error ' + i);
+      if (i < 4) await p.evaluate(() => { document.getElementById('jnError').textContent = ''; });
+    }
+    await p.fill('#jnCode', CAMP_CODE);
+    await p.click('#jnSubmit');
+    await waitFor(async () => (await p.textContent('#jnError')).includes('Too many wrong tries'), 5000, 'lock-out message');
+    assert(!(await p.isVisible('#screen-home')), 'no access');
+    // Admin (Mike) adds "Earl", releases John's phone, changes the code
+    await menu(page, 'settings');
+    await page.waitForSelector('#setHuntersCard:not(.hidden)');
+    await page.fill('#addHunterName', 'Earl');
+    await page.click('#addHunterBtn');
+    await waitFor(async () => (await page.textContent('#setHunterList')).includes('Earl'), 5000, 'Earl listed');
+    await shot(page, '13-admin-hunters');
+    await page.locator('#setHunterList .feed-item', { hasText: 'John' }).locator('button[data-h="release"]').click();
+    await page.locator('#dialogBox button[data-v="1"]').click();
+    await waitFor(() => ![...fake.devices.values()].includes(johnId), 5000, 'John released');
+    await page.fill('#newCampCode', '777888');
+    await page.click('#setCampCodeBtn');
+    await page.locator('#dialogBox button[data-v="1"]').click();
+    await waitFor(() => fake.campCode === '777888', 5000, 'code changed');
+    // the new code works (lock-out was cleared), and Earl can join
+    await p.evaluate(() => { document.getElementById('jnError').textContent = ''; });
+    await joinCamp(p, 'Earl', '777888');
+    await p.waitForSelector('#screen-stand.active, #screen-home.active');
+    // John's released phone asks to join again; his records are kept
+    await jpage.click('#syncStatus');
+    await waitFor(async () => (await jpage.textContent('#syncStatus')).includes('Join again'), 8000, 'John asked to rejoin');
+    await ctx.close();
+  });
+
+  await test('Camp sign-in turned off in Supabase gives a clear message', async () => {
+    fake.anonymousEnabled = false;
+    const ctx = await makeContext(browser, fake);
+    const p = await open(ctx, base);
+    await p.waitForSelector('#screen-signin.active');
+    await p.fill('#jnCode', '777888');
+    await p.click('#jnSubmit');
+    await waitFor(async () => (await p.textContent('#jnError')).includes('Allow anonymous sign-ins'), 5000, 'setup hint');
+    fake.anonymousEnabled = true;
     await ctx.close();
   });
 

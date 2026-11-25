@@ -321,33 +321,27 @@ label.field input, label.field select, label.field textarea, select.big, input.b
 <div id="banners"></div>
 
 <main>
-  <!-- Sign in (shared mode) -->
+  <!-- Join the camp (shared mode): camp code, then tap your name -->
   <section class="screen" id="screen-signin" aria-labelledby="signinTitle">
-    <h2 id="signinTitle">Sign in to Deer Camp</h2>
-    <p class="muted">You only need to do this once on this phone.</p>
-    <div class="card">
-      <form id="signinForm" autocomplete="on">
-        <label class="field">Email
-          <input type="email" id="siEmail" autocomplete="username" inputmode="email" autocapitalize="none" required>
+    <h2 id="signinTitle">Join Deer Camp</h2>
+    <p class="muted">You only do this once on this phone.</p>
+    <div class="card" id="joinCodeCard">
+      <form id="joinForm" autocomplete="off">
+        <label class="field">Camp code
+          <input type="text" id="jnCode" inputmode="numeric" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40"
+                 style="font-size:1.8rem;letter-spacing:.2em;text-align:center">
         </label>
-        <label class="field">Password
-          <input type="password" id="siPassword" autocomplete="current-password" required minlength="6">
-        </label>
-        <label class="field hidden" id="siNameWrap">Your name (as the camp knows you)
-          <input type="text" id="siName" autocomplete="name" maxlength="60">
-        </label>
-        <p class="err" id="siError" role="alert"></p>
-        <button class="btn btn-primary btn-big" type="submit" id="siSubmit">SIGN IN</button>
+        <p class="err" id="jnError" role="alert"></p>
+        <button class="btn btn-primary btn-big" type="submit" id="jnSubmit">NEXT</button>
       </form>
-      <button class="btn-link" id="siToggle" type="button">First time? Create an account</button>
     </div>
-    <div class="card hidden" id="siPending">
-      <h3>Waiting for approval</h3>
-      <p id="siPendingText">Your account has been created. The camp administrator needs to add you before you can record.</p>
-      <button class="btn btn-primary" id="siRecheck">CHECK AGAIN</button>
-      <button class="btn" id="siSignOut2">SIGN OUT</button>
+    <div class="card hidden" id="joinNameCard">
+      <h3>Tap your name</h3>
+      <div id="jnNames"></div>
+      <p class="err" id="jnNameError" role="alert"></p>
+      <button class="btn" id="jnBack" type="button">BACK</button>
     </div>
-    <p class="small muted">No internet right now? Sign-in needs a connection the first time. After that, Deer Camp works without service.</p>
+    <p class="small muted">Ask the camp administrator for the camp code. Joining needs internet the first time; after that, Deer Camp works without service.</p>
   </section>
 
   <!-- Hunter selection (phone-only mode) -->
@@ -512,7 +506,7 @@ label.field input, label.field select, label.field textarea, select.big, input.b
     <div class="card">
       <h3>You</h3>
       <p id="setWho"></p>
-      <button class="btn" id="setSwitch">SWITCH HUNTER / SIGN OUT</button>
+      <button class="btn" id="setSwitch">SWITCH HUNTER</button>
       <div class="check"><input type="checkbox" id="setBigText"><label for="setBigText">Extra-large text</label></div>
     </div>
 
@@ -562,12 +556,14 @@ label.field input, label.field select, label.field textarea, select.big, input.b
       <h3>Hunters</h3>
       <div id="setHunterList"></div>
       <h3 style="margin-top:12px">Add a hunter</h3>
-      <p class="small muted">Enter their name and email. They then open Deer Camp, tap "Create an account" and use that same email.</p>
-      <label class="field">Name<input type="text" id="invName" maxlength="60"></label>
-      <label class="field">Email<input type="email" id="invEmail" autocapitalize="none"></label>
-      <div class="check"><input type="checkbox" id="invAdmin"><label for="invAdmin">Camp administrator</label></div>
-      <button class="btn btn-primary" id="invAdd">ADD HUNTER</button>
-      <div id="invList" class="small"></div>
+      <p class="small muted">The hunter then opens Deer Camp, enters the camp code and taps their name.</p>
+      <label class="field">Name<input type="text" id="addHunterName" maxlength="60"></label>
+      <div class="check"><input type="checkbox" id="addHunterAdmin"><label for="addHunterAdmin">Camp administrator</label></div>
+      <button class="btn btn-primary" id="addHunterBtn">ADD HUNTER</button>
+      <h3 style="margin-top:16px">Camp code</h3>
+      <p class="small muted">Everyone uses this code once to join on their phone. Changing it does not sign anyone out. Use at least 6 digits.</p>
+      <label class="field">New camp code<input type="text" id="newCampCode" inputmode="numeric" autocomplete="off" maxlength="40"></label>
+      <button class="btn" id="setCampCodeBtn">CHANGE CAMP CODE</button>
     </div>
 
     <details class="card">
@@ -768,10 +764,19 @@ const Cloud = {
     if (error && isNetworkError(error)) throw error;
     return (data && data.session) || null;
   },
-  async profile(uid) {
-    const { data, error } = await withTimeout(this.sb.from('profiles').select('id,display_name,is_admin,is_active').eq('id', uid).maybeSingle(), 15000, 'Profile');
+  /** Call a database function; throws on error. */
+  async rpc(fn, args) {
+    const { data, error } = await withTimeout(this.sb.rpc(fn, args || {}), 20000, 'Server');
     if (error) throw error;
     return data;
+  },
+  /** This phone's own private Supabase account (created on first join, kept afterwards). */
+  async ensurePhoneAccount() {
+    const s = await this.session();
+    if (s) return s;
+    const { data, error } = await withTimeout(this.sb.auth.signInAnonymously(), 20000, 'Join');
+    if (error) throw error;
+    return data.session;
   },
   subscribe() {
     if (!this.sb || this.channel) return;
@@ -832,8 +837,14 @@ const Sync = {
       const session = await Cloud.session();
       if (!session) { this.authNeeded = true; return; }
       this.authNeeded = false;
-      if (session.user.id !== S.identity.hunter_id) { this.lastError = 'Signed in as a different account.'; return; }
-      changed = (await this.push(session.user.id)) || changed;
+      if (session.user.id !== (S.identity.auth_user_id || S.identity.hunter_id)) { this.authNeeded = true; return; }
+      const me = await Cloud.rpc('whoami');
+      if (!me || !me.hunter || me.hunter.id !== S.identity.hunter_id) {
+        // released or deactivated by the administrator: keep the records, ask to rejoin
+        this.authNeeded = true;
+        return;
+      }
+      changed = (await this.push(S.identity.hunter_id)) || changed;
       changed = (await this.pull()) || changed;
       this.lastError = null;
       setOnline(true);
@@ -860,7 +871,7 @@ const Sync = {
     this.retryTimer = setTimeout(() => { if (navigator.onLine) this.run('retry'); else this.retryDelay = 0; }, this.retryDelay);
   },
   /** Upload queued records belonging to the signed-in hunter. */
-  async push(uid) {
+  async push(hunterId) {
     const prio = { hunting_sessions: 0, deer_sightings: 1, gunshot_reports: 1 };
     const entries = (await DB.all('outbox')).sort((a, b) => (prio[a.table] - prio[b.table]) || a.queued_at.localeCompare(b.queued_at));
     const blockedSessions = new Set();
@@ -868,7 +879,7 @@ const Sync = {
     for (const e of entries) {
       const rec = await DB.get(e.store, e.record_id);
       if (!rec) { await DB.del('outbox', e.key); continue; }
-      if (rec.hunter_id !== uid) continue;           // belongs to another hunter: hold, never reassign
+      if (rec.hunter_id !== hunterId) continue;      // belongs to another hunter: hold, never reassign
       if (e.table !== 'hunting_sessions' && blockedSessions.has(rec.session_id)) continue;
       const rev = rec._rev;
       await this.setRecordSync(e.store, rec.id, rev, 'syncing', null);
@@ -1003,9 +1014,10 @@ async function refreshStatus() {
   $('#netStatus').innerHTML = online ? '<span class="dot on"></span>Online' : '<span class="dot off"></span>Offline (no service)';
   const el = $('#syncStatus');
   let txt, cls;
-  if (!isCloudId()) { txt = '📱 Saved on Phone (sharing off)'; cls = 'sync-wait'; }
+  if (!S.identity && Cloud.enabled()) { txt = 'Not joined yet'; cls = 'sync-wait'; }
+  else if (!isCloudId()) { txt = '📱 Saved on Phone (sharing off)'; cls = 'sync-wait'; }
   else if (Sync.running) { txt = '⟳ Syncing…'; cls = 'sync-wait'; }
-  else if (Sync.authNeeded) { txt = '⚠ Sign in to sync' + (S.pendingMine ? ' (' + S.pendingMine + ' waiting)' : ''); cls = 'sync-bad'; }
+  else if (Sync.authNeeded) { txt = '⚠ Join again to sync' + (S.pendingMine ? ' (' + S.pendingMine + ' waiting)' : ''); cls = 'sync-bad'; }
   else if (S.failed && online) { txt = '⚠ Sync Failed — tap to retry'; cls = 'sync-bad'; }
   else if (S.pendingMine) { txt = '⏳ Waiting to Sync (' + S.pendingMine + ')'; cls = 'sync-wait'; }
   else { txt = '✓ Synced'; cls = 'sync-ok'; }
@@ -1150,79 +1162,95 @@ async function loadCatalog() {
 }
 const activeStands = () => S.stands.filter((s) => s.is_active !== false);
 
-// ======================================================= Sign-in (shared mode)
-let signUpMode = false;
-function setSignUpMode(v) {
-  signUpMode = v;
-  $('#siNameWrap').classList.toggle('hidden', !v);
-  $('#siSubmit').textContent = v ? 'CREATE ACCOUNT' : 'SIGN IN';
-  $('#siToggle').textContent = v ? 'Already have an account? Sign in' : 'First time? Create an account';
-  $('#siPassword').setAttribute('autocomplete', v ? 'new-password' : 'current-password');
+// ======================================================= Join the camp (shared mode)
+const JN = { code: '', hunters: [] };
+const JOIN_ERRORS = {
+  wrong: 'That camp code is not right. Please check it and try again.',
+  locked: 'Too many wrong tries on this phone. Wait 15 minutes and try again.',
+  not_set: 'The camp code has not been set up yet. Ask the camp administrator.',
+  not_signed_in: 'Could not reach Deer Camp. Check your service and try again.',
+  in_use: 'That name is already being used on another phone. Ask the camp administrator to release it.',
+  no_such_hunter: 'That name is no longer in the camp list.'
+};
+function joinErrorText(e) {
+  const m = String((e && e.message) || e || '');
+  if (/anonymous sign-ins are disabled/i.test(m)) return 'Camp sign-in is not turned on yet. Administrator: in Supabase, Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins".';
+  if (isNetworkError(e)) return 'No connection. Joining needs service the first time.';
+  return 'Could not join: ' + m;
+}
+function showJoinStep(step) {
+  $('#joinCodeCard').classList.toggle('hidden', step !== 'code');
+  $('#joinNameCard').classList.toggle('hidden', step !== 'name');
 }
 
-async function completeSignIn(user) {
-  const prof = await Cloud.profile(user.id);
-  if (!prof || !prof.is_active) {
-    $('#signinForm').parentElement.classList.add('hidden');
-    $('#siPending').classList.remove('hidden');
-    $('#siPendingText').textContent = 'Signed in as ' + (user.email || 'your account') + '. The camp administrator needs to add or approve you before you can record. Ask them to add this email under Settings → Hunters.';
-    return false;
-  }
-  const prevId = S.identity && S.identity.hunter_id;
-  S.identity = { mode: 'cloud', hunter_id: user.id, display_name: prof.display_name, is_admin: !!prof.is_admin, is_active: true, email: user.email };
-  await DB.setMeta('identity', S.identity);
-  if (prevId !== user.id) { S.session = null; await DB.setMeta('activeSessionId', null); }
-  $('#siPending').classList.add('hidden');
-  $('#signinForm').parentElement.classList.remove('hidden');
-  await Sync.run('signin');
-  await loadCatalog();
-  await afterIdentity();
-  return true;
-}
-
-async function onSignInSubmit(ev) {
+async function onJoinCode(ev) {
   ev.preventDefault();
-  const email = $('#siEmail').value.trim().toLowerCase();
-  const pw = $('#siPassword').value;
-  const err = $('#siError');
+  const err = $('#jnError');
   err.textContent = '';
-  if (!navigator.onLine) { err.textContent = 'No internet connection. Sign-in needs service the first time.'; return; }
-  const btn = $('#siSubmit');
-  btn.disabled = true;
+  const code = $('#jnCode').value.trim();
+  if (!code) { err.textContent = 'Type the camp code.'; return; }
+  if (!navigator.onLine) { err.textContent = 'No internet connection. Joining needs service the first time.'; return; }
+  const btn = $('#jnSubmit');
+  btn.disabled = true; btn.textContent = 'CHECKING…';
   try {
-    if (signUpMode) {
-      const name = $('#siName').value.trim();
-      if (!name) { err.textContent = 'Please enter your name.'; return; }
-      const { data, error } = await withTimeout(Cloud.sb.auth.signUp({ email, password: pw, options: { data: { display_name: name } } }), 20000, 'Create account');
-      if (error) throw error;
-      if (!data.session) {
-        err.textContent = 'Account created. Check your email for a confirmation link, then come back and sign in.';
-        setSignUpMode(false);
-        return;
-      }
-      await completeSignIn(data.user);
-    } else {
-      const { data, error } = await withTimeout(Cloud.sb.auth.signInWithPassword({ email, password: pw }), 20000, 'Sign in');
-      if (error) throw error;
-      await completeSignIn(data.user);
+    await Cloud.ensurePhoneAccount();
+    const res = await Cloud.rpc('camp_roster', { code });
+    if (!res || !res.ok) { err.textContent = JOIN_ERRORS[res && res.error] || 'Could not join.'; return; }
+    JN.code = code;
+    JN.hunters = res.hunters || [];
+    renderJoinNames();
+    showJoinStep('name');
+  } catch (e) { err.textContent = joinErrorText(e); }
+  finally { btn.disabled = false; btn.textContent = 'NEXT'; }
+}
+
+function renderJoinNames() {
+  const list = $('#jnNames');
+  $('#jnNameError').textContent = '';
+  if (!JN.hunters.length) { list.innerHTML = '<p>No hunters have been added yet. Ask the camp administrator to add your name.</p>'; return; }
+  list.innerHTML = JN.hunters.map((h) => '<button class="btn btn-big list-btn" data-id="' + h.id + '"' + (h.in_use ? ' disabled' : '') + '><span>' + esc(h.display_name) +
+    (h.in_use ? '<br><small>In use on another phone</small>' : h.mine ? '<br><small>This phone</small>' : '') + '</span></button>').join('');
+  $$('button[data-id]', list).forEach((b) => b.onclick = () => joinAs(JN.hunters.find((h) => h.id === b.dataset.id), b));
+}
+
+async function joinAs(h, btn) {
+  const err = $('#jnNameError');
+  err.textContent = '';
+  $$('#jnNames button').forEach((b) => { b.disabled = true; });
+  try {
+    const session = await Cloud.ensurePhoneAccount();
+    const res = await Cloud.rpc('join_camp', { code: JN.code, hunter: h.id });
+    if (!res || !res.ok) {
+      err.textContent = JOIN_ERRORS[res && res.error] || 'Could not join.';
+      if (res && (res.error === 'wrong' || res.error === 'locked')) showJoinStep('code');
+      return;
     }
-  } catch (e) {
-    err.textContent = /invalid login/i.test(e.message || '') ? 'Email or password is not right. Please try again.' : ('Could not sign in: ' + (e.message || e));
-  } finally { btn.disabled = false; }
+    const prevId = S.identity && S.identity.hunter_id;
+    S.identity = { mode: 'cloud', hunter_id: res.hunter.id, display_name: res.hunter.display_name, is_admin: !!res.hunter.is_admin, is_active: true, auth_user_id: session.user.id };
+    await DB.setMeta('identity', S.identity);
+    if (prevId !== S.identity.hunter_id) { S.session = null; await DB.setMeta('activeSessionId', null); }
+    JN.code = ''; $('#jnCode').value = '';
+    showJoinStep('code');
+    Sync.authNeeded = false;
+    await Sync.run('join');
+    await loadCatalog();
+    await afterIdentity();
+  } catch (e) { err.textContent = joinErrorText(e); }
+  finally { $$('#jnNames button').forEach((b) => { const x = JN.hunters.find((y) => y.id === b.dataset.id); b.disabled = !!(x && x.in_use); }); }
 }
 
 async function signOutFlow() {
   await syncCounts();
   const msg = S.pendingMine
-    ? 'You have ' + S.pendingMine + ' record(s) that have not uploaded yet. They will stay safely on this phone and upload the next time ' + S.identity.display_name + ' signs in here.'
-    : 'You can sign back in at any time.';
+    ? 'You have ' + S.pendingMine + ' record(s) that have not uploaded yet. They will stay safely on this phone and upload the next time ' + S.identity.display_name + ' joins on this phone.'
+    : 'You can join again at any time with the camp code.';
   if (!(await Dialog.confirm('Switch hunter?', msg, 'SWITCH HUNTER', 'STAY SIGNED IN'))) return;
   if (S.session) await endHunt(true);
   if (isCloudId() && Cloud.enabled()) {
     Cloud.unsubscribe();
-    try { await withTimeout(Cloud.sb.auth.signOut({ scope: 'local' }), 8000, 'Sign out'); } catch (_) {
-      try { localStorage.removeItem('deercamp-auth'); } catch (__) {}
-    }
+    // Free this hunter's name for use on another phone. The phone keeps its own
+    // account, so queued records stay safe and upload when this hunter rejoins.
+    if (navigator.onLine) { try { await Cloud.rpc('leave_camp'); } catch (_) {} }
   }
   S.identity = null;
   S.session = null;
@@ -2198,7 +2226,7 @@ async function renderActivity() {
 // ======================================================= Settings
 async function renderSettings() {
   const id = S.identity;
-  $('#setWho').innerHTML = id ? 'Hunter: <b>' + esc(id.display_name) + '</b>' + (id.email ? '<br><span class="small">' + esc(id.email) + '</span>' : '') +
+  $('#setWho').innerHTML = id ? 'Hunter: <b>' + esc(id.display_name) + '</b>' +
     '<br><span class="small">' + (id.mode === 'cloud' ? (id.is_admin ? 'Camp administrator · ' : '') + 'Shared with the camp' : 'Phone-only mode (not shared)') + '</span>' : '';
   $('#setBigText').checked = document.documentElement.classList.contains('text-xl');
   renderSettingsSync();
@@ -2239,7 +2267,7 @@ async function renderSettingsSync() {
   let txt;
   if (!isCloudId()) txt = 'Phone-only mode — records are saved on this phone only.';
   else txt = (S.pendingMine ? S.pendingMine + ' record(s) waiting to upload.' : 'Everything from this phone is uploaded.') +
-    (last ? ' Last sync: ' + fmtDay(last) + ' ' + fmtTime(last) + '.' : '') + (Sync.authNeeded ? ' Please sign in again to upload.' : '') + (Sync.lastError ? ' Last problem: ' + Sync.lastError : '');
+    (last ? ' Last sync: ' + fmtDay(last) + ' ' + fmtTime(last) + '.' : '') + (Sync.authNeeded ? ' This phone needs to join the camp again (tap the sync status at the top) to upload.' : '') + (Sync.lastError ? ' Last problem: ' + Sync.lastError : '');
   if (S.pendingOther) txt += ' ' + S.pendingOther + ' record(s) on this phone belong to another hunter and will upload when they sign in here.';
   $('#setSync').textContent = txt;
   $('#setSyncNow').classList.toggle('hidden', !isCloudId());
@@ -2297,19 +2325,26 @@ async function saveStandForm(f, err, s) {
 async function renderHunterAdmin() {
   const list = $('#setHunterList');
   if (!navigator.onLine) { list.innerHTML = '<p class="muted">Connect to the internet to manage hunters.</p>'; return; }
-  const { data, error } = await Cloud.sb.from('profiles').select('id,display_name,is_admin,is_active').order('display_name');
-  if (error) { list.innerHTML = '<p class="err">' + esc(error.message) + '</p>'; return; }
-  const pending = data.filter((p) => !p.is_active);
-  list.innerHTML = data.sort((a, b) => (a.is_active - b.is_active) || a.display_name.localeCompare(b.display_name)).map((p) =>
-    '<div class="feed-item" style="border-left-color:' + (p.is_active ? 'var(--green)' : 'var(--orange)') + '"><div class="when">' + esc(p.display_name) +
-    (p.is_admin ? ' <span class="tag">Admin</span>' : '') + (p.is_active ? '' : ' <span class="tag pending">Not active</span>') + '</div>' +
-    '<div class="btn-row" style="margin-top:6px"><button class="btn btn-inline" data-h="rename" data-id="' + p.id + '">RENAME</button>' +
+  let data;
+  try { data = await Cloud.rpc('hunter_list'); } catch (e) { list.innerHTML = '<p class="err">' + esc(e.message || e) + '</p>'; return; }
+  list.innerHTML = data.map((p) =>
+    '<div class="feed-item" style="border-left-color:' + (p.is_active ? 'var(--green)' : 'var(--line)') + '"><div class="when">' + esc(p.display_name) +
+    (p.is_admin ? ' <span class="tag">Admin</span>' : '') + (p.is_active ? '' : ' <span class="tag">Deactivated</span>') + '</div>' +
+    '<div class="small">' + (p.in_use ? '📱 Joined on a phone' + (p.last_seen_at ? ' (last seen ' + fmtDay(p.last_seen_at) + ' ' + fmtTime(p.last_seen_at) + ')' : '') : 'Not joined on any phone yet') + '</div>' +
+    '<div class="btn-row" style="margin-top:6px;flex-wrap:wrap"><button class="btn btn-inline" data-h="rename" data-id="' + p.id + '">RENAME</button>' +
+    (p.in_use ? '<button class="btn btn-inline" data-h="release" data-id="' + p.id + '">RELEASE PHONE</button>' : '') +
     '<button class="btn btn-inline ' + (p.is_active ? '' : 'btn-primary') + '" data-h="active" data-id="' + p.id + '">' + (p.is_active ? 'DEACTIVATE' : 'ACTIVATE') + '</button>' +
     '<button class="btn btn-inline" data-h="admin" data-id="' + p.id + '">' + (p.is_admin ? 'REMOVE ADMIN' : 'MAKE ADMIN') + '</button></div></div>').join('') +
-    (pending.length ? '<p class="small muted">Not active = signed up but cannot see or record anything until you activate them.</p>' : '');
+    '<p class="small muted">RELEASE PHONE frees a name so the hunter can join on a new phone (lost or replaced phone).</p>';
   $$('button[data-h]', list).forEach((b) => b.onclick = async () => {
     const p = data.find((x) => x.id === b.dataset.id);
     let patch;
+    if (b.dataset.h === 'release') {
+      if (!(await Dialog.confirm('Release ' + p.display_name + '\u2019s phone?', 'Their current phone stops syncing until they join again with the camp code. Nothing is deleted.', 'RELEASE', 'CANCEL'))) return;
+      try { await Cloud.rpc('release_hunter', { hunter: p.id }); toast('Released. ' + p.display_name + ' can now join on another phone.'); } catch (e) { toast('Not saved: ' + e.message, 6000); }
+      renderHunterAdmin();
+      return;
+    }
     if (b.dataset.h === 'rename') {
       const ok = await Dialog.form('Rename hunter', '<label class="field">Display name<input name="n" maxlength="60" required value="' + esc(p.display_name) + '"></label>', 'SAVE',
         (f) => { patch = { display_name: f.n.value.trim() }; return !!patch.display_name; });
@@ -2322,23 +2357,25 @@ async function renderHunterAdmin() {
     if (e2) toast('Not saved: ' + e2.message, 6000); else toast('Saved');
     renderHunterAdmin();
   });
-  const inv = await Cloud.sb.from('hunter_invites').select('*').order('created_at', { ascending: false });
-  $('#invList').innerHTML = inv.error ? '' : (inv.data.length ? '<p><b>Added by email:</b></p>' + inv.data.map((i) => '<p>' + esc(i.display_name) + ' — ' + esc(i.email) + (i.is_admin ? ' (admin)' : '') +
-    ' <button class="btn-link" data-inv="' + esc(i.email) + '">remove</button></p>').join('') : '');
-  $$('button[data-inv]', $('#invList')).forEach((b) => b.onclick = async () => {
-    await Cloud.sb.from('hunter_invites').delete().eq('email', b.dataset.inv); renderHunterAdmin();
-  });
 }
 
-async function addInvite() {
-  const name = $('#invName').value.trim(), email = $('#invEmail').value.trim().toLowerCase();
-  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Enter a name and a valid email'); return; }
-  const { error } = await Cloud.sb.from('hunter_invites').upsert({ email, display_name: name, is_admin: $('#invAdmin').checked, created_by: S.identity.hunter_id });
+async function addHunter() {
+  const name = $('#addHunterName').value.trim();
+  if (!name) { toast('Type the hunter\u2019s name'); return; }
+  if (!navigator.onLine) { toast('Adding hunters needs an internet connection.'); return; }
+  const { error } = await Cloud.sb.from('profiles').insert({ display_name: name.slice(0, 60), is_admin: $('#addHunterAdmin').checked, is_active: true });
   if (error) { toast('Not saved: ' + error.message, 6000); return; }
-  // (If that email already has an account, the database activates it now.)
-  $('#invName').value = ''; $('#invEmail').value = ''; $('#invAdmin').checked = false;
-  toast('Hunter added. They can now create their account with ' + email, 5000);
+  $('#addHunterName').value = ''; $('#addHunterAdmin').checked = false;
+  toast(name + ' added. They can now join with the camp code.', 5000);
   renderHunterAdmin();
+}
+
+async function changeCampCode() {
+  const code = $('#newCampCode').value.trim();
+  if (!/^\d{6,}$/.test(code)) { toast('Use at least 6 digits.', 5000); return; }
+  if (!(await Dialog.confirm('Change the camp code?', 'New camp code: ' + code + '. Hunters already joined stay joined. Anyone joining from now on needs the new code.', 'CHANGE CODE', 'CANCEL'))) return;
+  try { await Cloud.rpc('set_camp_code', { code }); $('#newCampCode').value = ''; toast('Camp code changed', 4000); }
+  catch (e) { toast('Not saved: ' + e.message, 6000); }
 }
 
 // ======================================================= Export / Import
@@ -2451,13 +2488,8 @@ function bind() {
     Sync.retryDelay = 0;
     Sync.run('manual');
   };
-  $('#signinForm').onsubmit = onSignInSubmit;
-  $('#siToggle').onclick = () => setSignUpMode(!signUpMode);
-  $('#siRecheck').onclick = async () => {
-    try { const s = await Cloud.session(); if (s) { if (!(await completeSignIn(s.user))) toast('Not approved yet'); } else { $('#siPending').classList.add('hidden'); $('#signinForm').parentElement.classList.remove('hidden'); } }
-    catch (e) { toast('No connection: ' + e.message); }
-  };
-  $('#siSignOut2').onclick = async () => { try { await Cloud.sb.auth.signOut({ scope: 'local' }); } catch (_) {} $('#siPending').classList.add('hidden'); $('#signinForm').parentElement.classList.remove('hidden'); };
+  $('#joinForm').onsubmit = onJoinCode;
+  $('#jnBack').onclick = () => showJoinStep('code');
   $('#addLocalHunter').onclick = addLocalHunter;
   $('#standCancel').onclick = () => show('home');
   $('#changeStand').onclick = () => show('stand');
@@ -2501,7 +2533,8 @@ function bind() {
   $('#setSwitch').onclick = signOutFlow;
   $('#setSyncNow').onclick = () => Sync.run('manual');
   $('#setAddStand').onclick = () => editStand(null);
-  $('#invAdd').onclick = addInvite;
+  $('#addHunterBtn').onclick = addHunter;
+  $('#setCampCodeBtn').onclick = changeCampCode;
   $('#setBigText').onchange = () => {
     document.documentElement.classList.toggle('text-xl', $('#setBigText').checked);
     try { localStorage.setItem('deercamp-bigtext', $('#setBigText').checked ? '1' : '0'); } catch (_) {}

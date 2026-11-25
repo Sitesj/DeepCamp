@@ -41,17 +41,22 @@ Deer Camp is a phone app for a small hunting group. Each hunter picks their name
 
 ## 2. Apply the database migration
 
-The schema is in two files in [`supabase/migrations/`](supabase/migrations/). Run them **in order, each once**:
+The schema is in [`supabase/migrations/`](supabase/migrations/), as three files that run **in order, each once**:
 
 1. `20261122000001_deer_camp_schema.sql` — the tables, security and triggers
-2. `20261122000002_mixed_deer_groups.sql` — adds buck / doe / fawn / unknown counts so one sighting can be a mixed group (existing sightings are converted automatically)
+2. `20261122000002_mixed_deer_groups.sql` — buck / doe / fawn / unknown counts, so one sighting can be a mixed group
+3. `20261125000003_camp_code_sign_in.sql` — sign-in with a camp code instead of e-mail
+
+For a **new project**, [`supabase/setup-all-in-one.sql`](supabase/setup-all-in-one.sql) is the same three files joined together, so you only paste once.
 
 Together they create:
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One row per hunter account: display name, administrator flag, active flag |
-| `hunter_invites` | Hunters the administrator has added by e-mail (supporting table) |
+| `profiles` | One row per hunter: display name, administrator flag, active flag |
+| `hunter_devices` | Which phone is signed in as which hunter (supporting table; one phone per hunter name) |
+| `camp_settings` | The camp code, stored only as a bcrypt hash (supporting table) |
+| `join_attempts` | Wrong camp-code tries per phone, for the lock-out (supporting table) |
 | `stands` | Stand name, latitude, longitude, description, active flag |
 | `hunting_sessions` | Start / end of each hunt (hunter + stand) |
 | `deer_sightings` | Every deer sighting with direction, distance range, heading, number of bucks / does / fawns / unknown (one sighting can be a mixed group), total, weather |
@@ -59,7 +64,7 @@ Together they create:
 
 It also turns on Row Level Security, adds the policies, check constraints, indexes, triggers and Realtime publication.
 
-**Option A — SQL Editor (easiest):** open your project → **SQL Editor** → **New query**, paste the first migration file, click **Run**. It should finish with "Success. No rows returned". Then do the same with the second file in a new query.
+**Option A — SQL Editor (easiest):** open your project → **SQL Editor** → **New query**, paste all of `setup-all-in-one.sql`, click **Run**. It should finish with "Success. No rows returned". (If you already ran earlier files, run only the ones you have not run yet, in order.)
 
 **Option B — Supabase CLI:**
 
@@ -70,30 +75,32 @@ supabase db push
 
 ### What the database enforces
 
-- Only **active** hunters can see anything. A new account that was not added by the administrator gets an *inactive* profile and sees nothing until activated.
-- A hunter can only create sessions, sightings and gunshot reports **as themselves** (`hunter_id` must equal the signed-in user). Changing a name in the app cannot impersonate someone else.
+- A phone sees nothing until it has **joined the camp**: entered the right camp code and picked an active hunter name.
+- The camp code is checked on the server and stored only as a hash. After 5 wrong tries a phone is locked out for 15 minutes.
+- A hunter name can be in use on **one phone at a time**. Nobody else can pick that name, even with the camp code, until the hunter switches off it or the administrator releases it.
+- A phone can only create sessions, sightings and gunshot reports **as the hunter it joined as**. Choosing a different name in the app cannot post as someone else.
 - Sightings and gunshots can only be attached to the hunter's **own** hunting session.
 - Original observations can never be edited. The only change allowed is **voiding** your own record (with a reason). A voided record cannot be un-voided. Corrections are new records that point back to the voided one (`corrects_id`).
-- Only administrators can add or change stands and hunters. Stands are deactivated, never deleted. The last administrator cannot be removed.
+- Only administrators can add or change stands and hunters, release phones and change the camp code. Stands and hunters are deactivated, never deleted. The last administrator cannot be removed.
 - Records are uploaded with the UUID made on the phone, so uploading the same record twice never creates a duplicate.
 
-## 3. Configure authentication
+## 3. Configure sign-in and set the camp code
+
+Hunters do **not** need an e-mail address. Each phone gets its own private Supabase account automatically ("anonymous sign-in") the first time it joins, and stays signed in.
 
 In the Supabase dashboard:
 
-1. **Authentication → Sign In / Providers → Email**: make sure Email is enabled.
-2. **Recommended:** turn **off** "Confirm email". Access is already controlled by the administrator's hunter list, and confirmation links open in the phone's browser instead of the installed app, which confuses people. If you leave it on, each hunter must tap the link in the e-mail once, then sign in from the app.
-3. **Authentication → URL Configuration → Site URL**: set it to your GitHub Pages address, for example `https://YOUR-USER.github.io/DeepCamp/`.
-4. Leave the default session settings. Hunters stay signed in on their phone (the app refreshes the session automatically when it has service) and do not need to sign in again during normal use.
+1. **Authentication → Sign In / Providers**: turn **on** "Allow anonymous sign-ins". (Without this the app shows "Camp sign-in is not turned on yet".)
+2. Leave the default session settings. Phones stay signed in and refresh automatically whenever they have service.
 
-**Make yourself the first administrator.** Before you create your account, run this in the **SQL Editor** (use your own e-mail and name):
+**Add yourself as the first hunter and administrator, and set the camp code.** In the **SQL Editor**, run (with your own name and a code of at least 6 digits):
 
 ```sql
-insert into public.hunter_invites (email, display_name, is_admin)
-values ('you@example.com', 'Your Name', true);
+insert into public.profiles (display_name, is_admin, is_active) values ('Your Name', true, true);
+select public.set_camp_code('123456');
 ```
 
-Then open the app and tap **First time? Create an account** with that same e-mail. (If you already created the account, running the insert activates it.)
+Then open the app, type the camp code, and tap your name.
 
 ## 4. Configure the public Supabase connection
 
@@ -119,12 +126,17 @@ You can also enter the URL and key on a single phone in **Settings → Connectio
 
 As an administrator, open **☰ → Settings → Hunters**:
 
-1. Under **Add a hunter**, type the hunter's name and e-mail, then tap **ADD HUNTER**. Tick *Camp administrator* if they should manage stands and hunters too.
-2. Tell the hunter to open Deer Camp, tap **First time? Create an account**, and use that same e-mail and a password of their choice. Their account is active right away with the name you entered.
+1. Under **Add a hunter**, type the hunter's name and tap **ADD HUNTER**. Tick *Camp administrator* if they should manage stands and hunters too.
+2. Give the hunter the **camp code**. They open Deer Camp, type the code, and tap their name. That's all — no e-mail or password.
 
-Also in Settings → Hunters you can **RENAME** a hunter, **DEACTIVATE** them (their past records are kept), **ACTIVATE** someone who signed up without being added, and **MAKE ADMIN / REMOVE ADMIN**.
+Also in Settings → Hunters you can:
 
-*Alternative:* you can create the account yourself in the Supabase dashboard (**Authentication → Users → Add user**) after adding the invite, and give the hunter the password.
+- **RENAME** a hunter or **DEACTIVATE** them (they are signed out everywhere; their past records are kept), and **ACTIVATE** them again.
+- **RELEASE PHONE** when a hunter gets a new phone or loses one: their name becomes free to join on another phone. Nothing is deleted; anything still waiting on the old phone uploads if that phone joins again as the same hunter.
+- **MAKE ADMIN / REMOVE ADMIN**.
+- **CHANGE CAMP CODE**. Hunters already joined stay joined; only new joins need the new code.
+
+**Switch hunter** (Settings) frees the name on this phone, so a phone can be handed to another hunter. Records not yet uploaded stay on the phone and upload when their hunter joins on it again; they are never uploaded under someone else's name.
 
 ## 6. Add stands and GPS coordinates
 
@@ -156,11 +168,11 @@ Open the site **once with internet** so the app can save itself on the phone.
 - **iPhone (Safari):** tap the Share button → **Add to Home Screen** → Add. Always open Deer Camp from the home-screen icon. (Installing also protects the saved records from Safari's automatic cleanup of website data.)
 - **Android (Chrome):** tap ⋮ → **Install app** (or **Add to Home screen**).
 
-Then sign in, choose your stand, and check **☰ → Settings → About this phone**: it should say *App files: ready for offline use*. If it does not, close the app and open it again while you have service.
+Then join with the camp code, choose your stand, and check **☰ → Settings → About this phone**: it should say *App files: ready for offline use*. If it does not, close the app and open it again while you have service.
 
 ## 9. Test offline recording
 
-1. With service, open Deer Camp, sign in, choose a stand.
+1. With service, open Deer Camp, join with the camp code, choose a stand.
 2. Turn on **Airplane mode**.
 3. Close Deer Camp completely, then open it again from the home-screen icon. It should open normally and show **Offline (no service)**.
 4. Tap **LOG DEER SIGHTING** and go through the steps. You should see **SAVED ON PHONE — WILL SYNC LATER**.
@@ -172,7 +184,7 @@ The satellite pictures do not load offline; the maps still show stands and recor
 
 1. After the offline test, turn Airplane mode **off**.
 2. Within a few seconds the top bar changes to **⟳ Syncing…** and then **✓ Synced**. You can also tap the sync status to sync right away.
-3. On a second phone signed in as another hunter, open **Camp Activity** or **Live Map**: the record appears with the original time it was seen (not the upload time).
+3. On a second phone joined as another hunter, open **Camp Activity** or **Live Map**: the record appears with the original time it was seen (not the upload time).
 4. In Supabase → **Table Editor → deer_sightings** you can see the row. Syncing again never creates a second copy.
 
 Sync is attempted when the app starts, when service comes back, when the app is brought to the front, every minute or two while it is open, after every new record, and when you tap the status. Failed uploads are retried automatically and shown as **Sync Failed — tap to retry** with the reason in Settings → Sync.
@@ -253,7 +265,7 @@ tests/e2e/                     Browser tests (Playwright) with an in-memory fake
 How it fits together:
 
 - **Saving:** every record gets a UUID and its original timestamp on the phone, then is written to IndexedDB in one transaction together with an upload-queue ("outbox") entry, and read back before **SAVED** is shown. If the write fails the hunter sees **NOT SAVED** instead.
-- **Uploading:** the outbox is uploaded with `upsert` by UUID (sessions first, then observations). A record is marked synced only after Supabase returns it. Records belonging to a different hunter than the one signed in stay queued until that hunter signs in on this phone — they are never re-attributed.
+- **Uploading:** the outbox is uploaded with `upsert` by UUID (sessions first, then observations). A record is marked synced only after Supabase returns it. Records belonging to a different hunter than the one this phone has joined as stay queued until that hunter joins on this phone again — they are never re-attributed.
 - **Downloading:** shared records are pulled incrementally by `updated_at` (plus Supabase Realtime when available). A download never overwrites a local change that is still waiting to upload.
 - **Location estimate:** destination point on a sphere (mean Earth radius) from the stand, the 16-point bearing (22.5° steps, N = 0°) and the middle of the distance range in yards × 0.9144. The map can also show the uncertainty sector (±11.25°, min–max distance). The original direction and distance range are always stored; the coordinates are an approximate derived value.
 - **Weather:** Open-Meteo values for the stand's coordinates are cached on the phone and attached to each record from the cache, so weather never delays recording. Each snapshot stores the source, the weather time, the retrieval time, and whether it is `forecast` (fresh model data) or `cached` (older than an hour). Missing values stay empty.
@@ -278,23 +290,25 @@ The browser tests cover the required scenarios against an in-memory **fake Supab
 
 | Test | What is checked |
 |---|---|
-| A | Sign in, choose stand, start hunt, record a sighting → saved locally with all fields, weather attached, uploaded with the same UUID and original time, marked Synced |
+| A | Wrong camp code refused; join with the camp code, choose stand, start hunt, record a sighting → saved locally with all fields, weather attached, uploaded with the same UUID and original time, marked Synced |
 | B + I | Offline: record, close the app, reopen it with no connection (served by the service worker), record is still there and pending |
 | C | Several offline records sync after reconnecting, including a case where the server saved a record but the reply was lost — no duplicates |
 | D | Gunshot saved with correct stand, tap-time timestamp and bearing (NW = 315°) |
-| E / E2 | Two hunters at different stands see each other's records; on a shared phone one hunter's queued records are never uploaded under another hunter |
-| F | Replay is chronological across stands; deer placed at the right bearing and distance; travel arrows; red **!**; dashed gunshot arrows pointing the right way to the map edge; **BANG!** appears and fades |
+| E / E2 | A name in use on one phone cannot be picked on another; two hunters at different stands see each other's records; on a shared phone one hunter's queued records are never uploaded under another hunter |
+| F | Replay is chronological across stands; deer placed at the right bearing and distance; travel arrows; red **!**; dashed gunshot arrows pointing the right way to the map edge; **BANG!** appears; gunshot markings disappear after 30 seconds while deer stay |
 | G | Export → import keeps UUIDs, timestamps and bearings; re-import adds nothing; imports are not uploaded; bad files are rejected; imported hunt replays offline |
 | H | At 320, 360 and 414 px wide: exactly 16 circular compass buttons, all visible, ≥ 44 px, not overlapping, north on top, no duplicate buttons or dropdowns, tapping a circle advances |
-| Others | Voiding keeps the original record; inactive accounts cannot record; phone-only mode works; no JavaScript errors |
+| Others | Mixed groups (3 does, 1 buck, 2 fawns); voiding keeps the original record; 5 wrong camp codes lock a phone out; admin adds a hunter, releases a phone and changes the code; a released phone is asked to join again; clear message when anonymous sign-in is off in Supabase; phone-only mode works; no JavaScript errors |
 
 The database tests check, on real PostgreSQL, that hunters cannot write records as someone else, cannot attach records to another hunter's session, cannot edit original observations or un-void them, that inactive and anonymous users see nothing, that only admins manage stands/hunters, that invites activate accounts, that duplicate uploads are idempotent, and that no property tables or columns exist.
 
-**Not covered by automated tests:** a live Supabase project (real Auth e-mails, Realtime), real iPhone/Android devices, and real satellite tiles. Do steps 9 and 10 above on real phones after setting up your project.
+**Not covered by automated tests:** a live Supabase project (real anonymous sign-in, Realtime), real iPhone/Android devices, and real satellite tiles. Do steps 9 and 10 above on real phones after setting up your project.
 
 ## Known limitations
 
-- **First sign-in needs internet.** After that, the app opens and records with no service.
+- **Joining the camp needs internet** the first time on each phone. After that, the app opens and records with no service.
+- **The camp code is shared.** Anyone who has it can join as a hunter name that is not yet in use on a phone. Add only the names you want, change the code if it gets out, and release or deactivate names you do not recognize.
+- If a phone is reset or Deer Camp's data is cleared, that phone loses its sign-in; the administrator releases the hunter's name so they can join again.
 - **iPhone:** there is no background sync on iOS, so uploads happen while Deer Camp is open (on start, when service returns, when it comes to the front, and periodically). Open the app once you have service to upload. Install it to the home screen so iOS does not clear its saved data.
 - **Satellite imagery needs internet.** Offline, maps show stands and records over a plain background. Tiles are deliberately not saved for offline use (imagery licence terms).
 - **Weather** comes from Open-Meteo's weather models for the stand location (not a weather station). If there was never service at a stand, records there have no weather.
@@ -303,4 +317,3 @@ The database tests check, on real PostgreSQL, that hunters cannot write records 
 - **Dates** are grouped by the phone's own time zone. Timestamps are stored in UTC.
 - **Editing `config.js`** after phones have installed the app requires a new deployment (so the service worker picks it up), or entering the values in Settings → Connection setup.
 - Records made in **phone-only mode** cannot later be uploaded to Supabase (export them as JSON instead).
-- If e-mail confirmation is left on in Supabase, the confirmation link opens in the phone's browser; the hunter then returns to the installed app and signs in.
